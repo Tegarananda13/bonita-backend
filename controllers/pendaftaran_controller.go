@@ -6,6 +6,7 @@ import (
 
 	"bonita-backend/config"
 	"bonita-backend/models"
+	"bonita-backend/helpers"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -68,7 +69,9 @@ func CreatePendaftaran(c *gin.Context) {
 		PaketID:          paketID,
 		UserID:           userID,
 		NomorPendaftaran: nomor,
-		Status:           "pending",
+		PaymentStatus:  helpers.PaymentBelum,
+		DocumentStatus: helpers.DocumentBelum,
+		Status:         helpers.StatusProses,
 		TanggalDaftar:    time.Now(),
 	}
 
@@ -144,7 +147,9 @@ func GetPendaftaranByNomor(c *gin.Context) {
 	// 🔥 response lengkap lagi
 	c.JSON(http.StatusOK, gin.H{
 		"nomor":   pendaftaran.NomorPendaftaran,
-		"status":  pendaftaran.Status,
+		"payment_status":  pendaftaran.PaymentStatus,
+		"document_status": pendaftaran.DocumentStatus,
+		"status":          pendaftaran.Status,
 		"customer": pendaftaran.Customer.Nama,
 		"paket":   pendaftaran.Paket.NamaPaket,
 		"tanggal": pendaftaran.TanggalDaftar,

@@ -7,6 +7,7 @@ import (
 
 	"bonita-backend/config"
 	"bonita-backend/models"
+	"bonita-backend/helpers"
 
 	"github.com/gin-gonic/gin"
 )
@@ -164,7 +165,7 @@ func VerifikasiDokumen(c *gin.Context) {
 	}
 
 	// validasi status
-	if req.Status != "diterima" && req.Status != "ditolak" {
+	if req.Status != helpers.PaymentVerificationDiterima && req.Status != helpers.PaymentVerificationDitolak {
 
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Status hanya boleh diterima atau ditolak",
@@ -184,7 +185,7 @@ func VerifikasiDokumen(c *gin.Context) {
 		return
 	}
 
-	// update status
+	// update status dokumen
 	dokumen.StatusValidasi = req.Status
 
 	if err := config.DB.
@@ -197,11 +198,89 @@ func VerifikasiDokumen(c *gin.Context) {
 		return
 	}
 
+	// 🔥 AMBIL SEMUA DOKUMEN PENDAFTARAN
+	var dokumenList []models.Dokumen
+
+	if err := config.DB.
+		Where("pendaftaran_id = ?", dokumen.PendaftaranID).
+		Find(&dokumenList).Error; err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal mengambil dokumen",
+		})
+		return
+	}
+
+	// 🔥 DOKUMEN WAJIB
+	requiredDocs := []string{
+		"paspor",
+		"ktp",
+		"foto",
+	}
+
+	// map untuk cek dokumen
+	docStatus := make(map[string]string)
+
+	for _, d := range dokumenList {
+
+		docStatus[d.JenisDokumen] = d.StatusValidasi
+	}
+
+	// default status
+	documentStatus := helpers.DocumentPending
+
+	// cek apakah ada yang ditolak
+	for _, status := range docStatus {
+
+		if status == helpers.PaymentVerificationDitolak {
+
+			documentStatus = helpers.DocumentRevisi
+			break
+		}
+	}
+
+	// cek apakah semua dokumen wajib sudah diterima
+	if documentStatus != helpers.DocumentRevisi {
+
+		allComplete := true
+
+		for _, doc := range requiredDocs {
+
+			status, exists := docStatus[doc]
+
+			if !exists || status != helpers.PaymentVerificationDiterima {
+
+				allComplete = false
+				break
+			}
+		}
+
+		if allComplete {
+
+			documentStatus = helpers.DocumentLengkap
+		}
+	}
+
+	// 🔥 UPDATE STATUS DI PENDAFTARAN
+	var pendaftaran models.Pendaftaran
+
+	if err := config.DB.
+		First(&pendaftaran, "id = ?", dokumen.PendaftaranID).Error; err == nil {
+
+		pendaftaran.DocumentStatus = documentStatus
+
+		config.DB.Model(&pendaftaran).
+			Update("document_status", pendaftaran.DocumentStatus)
+
+			helpers.UpdateStatusPendaftaran(pendaftaran.ID)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Status dokumen berhasil diupdate",
 		"data": gin.H{
-			"id":     dokumen.ID,
-			"status": dokumen.StatusValidasi,
+			"id":              dokumen.ID,
+			"status":          dokumen.StatusValidasi,
+			"document_status": documentStatus,
 		},
 	})
 }

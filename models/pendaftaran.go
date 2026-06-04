@@ -13,7 +13,9 @@ type Pendaftaran struct {
 	CustomerID         uuid.UUID
 	PaketID            uuid.UUID
 	UserID             uuid.UUID
-	Status             string
+	PaymentStatus  string
+	DocumentStatus string
+Status         string
 	TanggalDaftar      time.Time
 
 	// Relasi

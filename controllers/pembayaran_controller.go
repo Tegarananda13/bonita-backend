@@ -7,6 +7,7 @@ import (
 
 	"bonita-backend/config"
 	"bonita-backend/models"
+	"bonita-backend/helpers"
 
 	"github.com/gin-gonic/gin"
 )
@@ -43,7 +44,7 @@ func CreatePembayaran(c *gin.Context) {
 
 	config.DB.
 		Model(&models.Pembayaran{}).
-		Where("pendaftaran_id = ? AND status = ?", pendaftaran.ID, "diterima").
+		Where("pendaftaran_id = ? AND status = ?", pendaftaran.ID, helpers.PaymentVerificationDiterima).
 		Select("COALESCE(SUM(jumlah),0)").
 		Scan(&total)
 
@@ -220,7 +221,7 @@ func VerifikasiPembayaran(c *gin.Context) {
 	}
 
 	// validasi status
-	if req.Status != "diterima" && req.Status != "ditolak" {
+	if req.Status != helpers.PaymentVerificationDiterima && req.Status != helpers.PaymentVerificationDitolak {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Status hanya boleh diterima atau ditolak",
 		})
@@ -257,7 +258,7 @@ func VerifikasiPembayaran(c *gin.Context) {
 	}
 
 	// 🔥 UPDATE STATUS PENDAFTARAN
-	if pembayaran.Status == "diterima" {
+	if pembayaran.Status == helpers.PaymentVerificationDiterima {
 
 		var pendaftaran models.Pendaftaran
 
@@ -275,22 +276,25 @@ func VerifikasiPembayaran(c *gin.Context) {
 
 		config.DB.
 			Model(&models.Pembayaran{}).
-			Where("pendaftaran_id = ? AND status = ?", pembayaran.PendaftaranID, "diterima").
+			Where("pendaftaran_id = ? AND status = ?", pembayaran.PendaftaranID, helpers.PaymentVerificationDiterima).
 			Select("COALESCE(SUM(jumlah),0)").
 			Scan(&total)
 
 		// cek status
 		if total >= paket.Harga {
 
-			pendaftaran.Status = "lunas"
+			pendaftaran.PaymentStatus = helpers.PaymentLunas
 
 		} else {
 
-			pendaftaran.Status = "DP"
+			pendaftaran.PaymentStatus = "DP"
 		}
 
 		config.DB.Model(&pendaftaran).
-			Update("status", pendaftaran.Status)
+		Update("payment_status", pendaftaran.PaymentStatus)
+
+		// 🔥 update status utama otomatis
+		helpers.UpdateStatusPendaftaran(pendaftaran.ID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
