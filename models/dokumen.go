@@ -16,7 +16,7 @@ type Dokumen struct {
 	CreatedAt time.Time
 
 	// Relasi
-	Pendaftaran Pendaftaran `gorm:"foreignKey:PendaftaranID"`
+	Pendaftaran Pendaftaran `json:"-"`
 }
 
 func (d *Dokumen) BeforeCreate(tx *gorm.DB) (err error) {

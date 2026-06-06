@@ -75,7 +75,7 @@ func CreatePembayaran(c *gin.Context) {
 		PendaftaranID: pendaftaran.ID,
 		Jumlah:        req.Jumlah,
 		TanggalBayar:  time.Now(),
-		Status:        "menunggu_verifikasi",
+		Status:        helpers.PaymentVerificationPending,
 	}
 
 	// simpan ke DB
@@ -202,106 +202,5 @@ func UploadBuktiPembayaran(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Bukti pembayaran berhasil diupload",
 		"file":    pembayaran.BuktiPembayaran,
-	})
-}
-
-func VerifikasiPembayaran(c *gin.Context) {
-	id := c.Param("id")
-
-	var req struct {
-		Status string `json:"status" binding:"required"`
-	}
-
-	// validasi body
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Status wajib diisi",
-		})
-		return
-	}
-
-	// validasi status
-	if req.Status != helpers.PaymentVerificationDiterima && req.Status != helpers.PaymentVerificationDitolak {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Status hanya boleh diterima atau ditolak",
-		})
-		return
-	}
-
-	var pembayaran models.Pembayaran
-
-	// cari pembayaran
-	if err := config.DB.First(&pembayaran, "id = ?", id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Pembayaran tidak ditemukan",
-		})
-		return
-	}
-
-	// 🔥 wajib ada bukti pembayaran
-	if pembayaran.BuktiPembayaran == "" {
-
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Bukti pembayaran belum diupload",
-		})
-		return
-	}
-
-	// update status pembayaran
-	pembayaran.Status = req.Status
-
-	if err := config.DB.Save(&pembayaran).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Gagal update status pembayaran",
-		})
-		return
-	}
-
-	// 🔥 UPDATE STATUS PENDAFTARAN
-	if pembayaran.Status == helpers.PaymentVerificationDiterima {
-
-		var pendaftaran models.Pendaftaran
-
-		// ambil pendaftaran + paket
-		config.DB.
-			First(&pendaftaran, "id = ?", pembayaran.PendaftaranID)
-
-		var paket models.PaketUmroh
-
-		config.DB.
-		First(&paket, "id = ?", pendaftaran.PaketID)
-
-		// hitung total pembayaran diterima
-		var total float64
-
-		config.DB.
-			Model(&models.Pembayaran{}).
-			Where("pendaftaran_id = ? AND status = ?", pembayaran.PendaftaranID, helpers.PaymentVerificationDiterima).
-			Select("COALESCE(SUM(jumlah),0)").
-			Scan(&total)
-
-		// cek status
-		if total >= paket.Harga {
-
-			pendaftaran.PaymentStatus = helpers.PaymentLunas
-
-		} else {
-
-			pendaftaran.PaymentStatus = "DP"
-		}
-
-		config.DB.Model(&pendaftaran).
-		Update("payment_status", pendaftaran.PaymentStatus)
-
-		// 🔥 update status utama otomatis
-		helpers.UpdateStatusPendaftaran(pendaftaran.ID)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Status pembayaran berhasil diupdate",
-		"data": gin.H{
-			"id":     pembayaran.ID,
-			"status": pembayaran.Status,
-		},
 	})
 }

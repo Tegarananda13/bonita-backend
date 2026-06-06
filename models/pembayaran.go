@@ -16,7 +16,7 @@ type Pembayaran struct {
 	Status          string
 
 	// Relasi
-	Pendaftaran Pendaftaran `gorm:"foreignKey:PendaftaranID"`
+	Pendaftaran Pendaftaran `json:"-"`
 }
 
 func (p *Pembayaran) BeforeCreate(tx *gorm.DB) (err error) {

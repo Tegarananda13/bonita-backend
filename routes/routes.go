@@ -46,15 +46,45 @@ func SetupRoutes(r *gin.Engine) {
 			"/dashboard",
 			controllers.GetDashboard,
 		)
-		
+
+		admin.GET(
+			"/pendaftaran",
+			controllers.GetAllPendaftaran,
+		)
+
+		admin.GET(
+			"/pendaftaran/:nomor",
+			controllers.GetDetailPendaftaran,
+		)
+
 		admin.PUT(
 			"/pembayaran/:id/verifikasi",
 			controllers.VerifikasiPembayaran,
 		)
 
+		admin.GET(
+			"/pembayaran/:id",
+			controllers.GetDetailPembayaran,
+		)
+
+		admin.GET(
+			"/pembayaran/pending",
+			controllers.GetPendingPembayaran,
+		)
+
 		admin.PUT(
 			"/dokumen/:id/verifikasi",
 			controllers.VerifikasiDokumen,
+		)
+
+		admin.GET(
+			"/dokumen/:id",
+			controllers.GetDetailDokumen,
+		)
+
+		admin.GET(
+			"/dokumen/pending",
+			controllers.GetPendingDokumen,
 		)
 	}
 
