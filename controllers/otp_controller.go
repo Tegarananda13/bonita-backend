@@ -10,6 +10,7 @@ import (
 	"bonita-backend/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func RequestOTP(c *gin.Context) {
@@ -108,12 +109,38 @@ func VerifyOTP(c *gin.Context) {
 
 	// tandai OTP sudah dipakai
 	otp.IsUsed = true
+
 	if err := config.DB.Save(&otp).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal update OTP"})
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal update OTP",
+		})
+		return
+	}
+
+	// ===================================
+	// BUAT CUSTOMER SESSION
+	// ===================================
+
+	token := uuid.New().String()
+
+	session := models.CustomerSession{
+		PendaftaranID: pendaftaran.ID,
+		Token:         token,
+		ExpiredAt:     time.Now().Add(24 * time.Hour),
+		CreatedAt:     time.Now(),
+	}
+
+	if err := config.DB.Create(&session).Error; err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal membuat customer session",
+		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "OTP valid",
+		"token":   token,
 	})
 }

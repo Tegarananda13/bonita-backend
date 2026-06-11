@@ -24,13 +24,35 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/otp/request", controllers.RequestOTP)
 	r.POST("/otp/verify", controllers.VerifyOTP)
 
-	r.POST("/pembayaran", controllers.CreatePembayaran)
+	// hanya lihat status
 	r.GET("/pembayaran/:nomor", controllers.GetPembayaranByNomor)
-	r.POST("/pembayaran/:id/upload", controllers.UploadBuktiPembayaran)
-
-	r.POST("/dokumen/upload", controllers.UploadDokumen)
 	r.GET("/dokumen/:nomor", controllers.GetDokumenByNomor)
 
+	// ======================
+	// CUSTOMER SESSION (OTP)
+	// ======================
+
+	customer := r.Group("/customer")
+	customer.Use(
+		middleware.CustomerMiddleware(),
+	)
+
+	{
+		customer.POST(
+			"/pembayaran",
+			controllers.CreatePembayaran,
+		)
+
+		customer.POST(
+			"/pembayaran/:id/upload",
+			controllers.UploadBuktiPembayaran,
+		)
+
+		customer.POST(
+			"/dokumen/upload",
+			controllers.UploadDokumen,
+		)
+	}
 	// ======================
 	// ADMIN & OWNER
 	// ======================
@@ -86,6 +108,32 @@ func SetupRoutes(r *gin.Engine) {
 			"/dokumen/pending",
 			controllers.GetPendingDokumen,
 		)
+
+		admin.POST(
+			"/paket",
+			controllers.CreatePaket,
+		)
+
+		admin.PUT(
+			"/paket/:id",
+			controllers.UpdatePaket,
+		)
+
+		admin.GET(
+			"/paket",
+			controllers.GetAllPaket,
+		)
+
+		admin.GET(
+			"/paket/:id",
+			controllers.GetPaketByID,
+		)
+
+		admin.DELETE(
+			"/paket/:id",
+			controllers.DeletePaket,
+		)
+
 	}
 
 	// ======================
@@ -100,6 +148,7 @@ func SetupRoutes(r *gin.Engine) {
 
 	{
 		owner.POST("/admin", controllers.CreateAdmin)
-		// owner.GET("/admin", controllers.GetAdminList)
+		owner.GET("/admin", controllers.GetAdminList)
+		owner.DELETE("/admin/:id", controllers.DeleteAdmin)
 	}
 }

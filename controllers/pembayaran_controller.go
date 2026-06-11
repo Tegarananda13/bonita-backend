@@ -14,24 +14,28 @@ import (
 
 func CreatePembayaran(c *gin.Context) {
 	var req struct {
-		Nomor  string  `json:"nomor" binding:"required"`
 		Jumlah float64 `json:"jumlah" binding:"required"`
 	}
 
 	// validasi body
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Nomor dan jumlah wajib diisi",
+			"error": "Jumlah wajib diisi",
 		})
 		return
 	}
 
+	pendaftaranID := c.MustGet("pendaftaran_id")
+
 	var pendaftaran models.Pendaftaran
 
-	// ambil pendaftaran + paket
 	if err := config.DB.
 		Preload("Paket").
-		First(&pendaftaran, "nomor_pendaftaran = ?", req.Nomor).Error; err != nil {
+		First(
+			&pendaftaran,
+			"id = ?",
+			pendaftaranID,
+		).Error; err != nil {
 
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Pendaftaran tidak ditemukan",
@@ -130,20 +134,16 @@ func GetPembayaranByNomor(c *gin.Context) {
 }
 
 func UploadBuktiPembayaran(c *gin.Context) {
-	nomor := c.PostForm("nomor")
+	pendaftaranID := c.MustGet("pendaftaran_id")
 
-	if nomor == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Nomor pendaftaran wajib diisi",
-		})
-		return
-	}
-
-	// cari pendaftaran
 	var pendaftaran models.Pendaftaran
 
 	if err := config.DB.
-		First(&pendaftaran, "nomor_pendaftaran = ?", nomor).Error; err != nil {
+		First(
+			&pendaftaran,
+			"id = ?",
+			pendaftaranID,
+		).Error; err != nil {
 
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Pendaftaran tidak ditemukan",
@@ -179,12 +179,17 @@ func UploadBuktiPembayaran(c *gin.Context) {
 		return
 	}
 
-	// cari pembayaran terbaru
+	// ambil id pembayaran dari URL
+	pembayaranID := c.Param("id")
+
 	var pembayaran models.Pembayaran
 
 	if err := config.DB.
-		Where("pendaftaran_id = ?", pendaftaran.ID).
-		Order("tanggal_bayar DESC").
+		Where(
+			"id = ? AND pendaftaran_id = ?",
+			pembayaranID,
+			pendaftaran.ID,
+		).
 		First(&pembayaran).Error; err != nil {
 
 		c.JSON(http.StatusNotFound, gin.H{
@@ -196,8 +201,18 @@ func UploadBuktiPembayaran(c *gin.Context) {
 	// update path file
 	pembayaran.BuktiPembayaran = "/" + filepath
 
-	config.DB.Model(&pembayaran).
-		Update("bukti_pembayaran", pembayaran.BuktiPembayaran)
+	if err := config.DB.
+	Model(&pembayaran).
+	Update(
+		"bukti_pembayaran",
+		pembayaran.BuktiPembayaran,
+	).Error; err != nil {
+
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error": err.Error(),
+	})
+	return
+}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Bukti pembayaran berhasil diupload",

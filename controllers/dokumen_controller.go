@@ -14,11 +14,10 @@ import (
 func UploadDokumen(c *gin.Context) {
 
 	// ambil form-data
-	nomor := c.PostForm("nomor")
 	jenis := c.PostForm("jenis")
 
 	// validasi
-	if nomor == "" || jenis == "" {
+	if jenis == "" || jenis == "" {
 
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Nomor dan jenis dokumen wajib diisi",
@@ -26,11 +25,16 @@ func UploadDokumen(c *gin.Context) {
 		return
 	}
 
-	// cari pendaftaran
+	pendaftaranID := c.MustGet("pendaftaran_id")
+
 	var pendaftaran models.Pendaftaran
 
 	if err := config.DB.
-		First(&pendaftaran, "nomor_pendaftaran = ?", nomor).Error; err != nil {
+		First(
+		&pendaftaran,
+		"id = ?",
+		pendaftaranID,
+	).Error; err != nil {
 
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Pendaftaran tidak ditemukan",

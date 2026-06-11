@@ -15,7 +15,7 @@ type Pendaftaran struct {
 	UserID             uuid.UUID
 	PaymentStatus  string
 	DocumentStatus string
-Status         string
+	Status         string
 	TanggalDaftar      time.Time
 
 	// Relasi

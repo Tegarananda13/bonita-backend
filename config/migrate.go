@@ -12,5 +12,6 @@ func Migrate() {
 		&models.Pembayaran{},
 		&models.VerifikasiOTP{},
 		&models.ChatbotLog{},
+		&models.CustomerSession{},
 	)
 }

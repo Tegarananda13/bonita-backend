@@ -19,5 +19,5 @@ type PaketUmroh struct {
 
 func (p *PaketUmroh) BeforeCreate(tx *gorm.DB) (err error) {
 	p.ID = uuid.New()
-	return nil
+	return
 }
