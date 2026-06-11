@@ -18,12 +18,19 @@ func CreatePaket(c *gin.Context) {
 		TanggalBerangkat time.Time `json:"tanggal_berangkat"`
 		Durasi           int       `json:"durasi"`
 		Deskripsi        string    `json:"deskripsi"`
+		KuotaMax         int       `json:"kuota_max"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Data tidak valid",
+		})
+		return
+	}
+
+	if req.KuotaMax <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Kuota maksimal harus lebih dari 0",
 		})
 		return
 	}
@@ -34,12 +41,12 @@ func CreatePaket(c *gin.Context) {
 		TanggalBerangkat: req.TanggalBerangkat,
 		Durasi:           req.Durasi,
 		Deskripsi:        req.Deskripsi,
+		KuotaMax:         req.KuotaMax,
+		KuotaTerpakai:    0,
 		CreatedAt:        time.Now(),
 	}
 
-	if err := config.DB.
-		Create(&paket).Error; err != nil {
-
+	if err := config.DB.Create(&paket).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Gagal membuat paket",
 		})
@@ -112,12 +119,19 @@ func UpdatePaket(c *gin.Context) {
 		TanggalBerangkat time.Time `json:"tanggal_berangkat"`
 		Durasi           int       `json:"durasi"`
 		Deskripsi        string    `json:"deskripsi"`
+		KuotaMax         int       `json:"kuota_max"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Data tidak valid",
+		})
+		return
+	}
+
+	if req.KuotaMax < paket.KuotaTerpakai {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Kuota maksimal tidak boleh lebih kecil dari jumlah jamaah yang sudah terdaftar",
 		})
 		return
 	}
@@ -127,10 +141,9 @@ func UpdatePaket(c *gin.Context) {
 	paket.TanggalBerangkat = req.TanggalBerangkat
 	paket.Durasi = req.Durasi
 	paket.Deskripsi = req.Deskripsi
+	paket.KuotaMax = req.KuotaMax
 
-	if err := config.DB.
-		Save(&paket).Error; err != nil {
-
+	if err := config.DB.Save(&paket).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Gagal update paket",
 		})
@@ -139,7 +152,7 @@ func UpdatePaket(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Paket berhasil diupdate",
-		"data":    paket,
+		"data": paket,
 	})
 }
 
@@ -158,8 +171,14 @@ func DeletePaket(c *gin.Context) {
 		return
 	}
 
-	if err := config.DB.
-		Delete(&paket).Error; err != nil {
+	if paket.KuotaTerpakai > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Paket tidak bisa dihapus karena sudah memiliki jamaah",
+		})
+		return
+	}
+
+	if err := config.DB.Delete(&paket).Error; err != nil {
 
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Gagal menghapus paket",

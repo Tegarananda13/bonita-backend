@@ -1,23 +1,25 @@
-package models
+	package models
 
-import (
-	"time"
+	import (
+		"time"
 
-	"github.com/google/uuid"
-	"gorm.io/gorm"
-)
+		"github.com/google/uuid"
+		"gorm.io/gorm"
+	)
 
-type PaketUmroh struct {
-	ID                uuid.UUID `gorm:"type:uuid;primaryKey"`
-	NamaPaket         string
-	Harga             float64
-	TanggalBerangkat  time.Time
-	Durasi            int
-	Deskripsi         string
-	CreatedAt         time.Time
-}
+	type PaketUmroh struct {
+		ID                uuid.UUID `gorm:"type:uuid;primaryKey"`
+		NamaPaket         string
+		Harga             float64
+		TanggalBerangkat  time.Time
+		Durasi            int
+		Deskripsi         string
+		KuotaMax          int
+		KuotaTerpakai     int
+		CreatedAt         time.Time
+	}
 
-func (p *PaketUmroh) BeforeCreate(tx *gorm.DB) (err error) {
-	p.ID = uuid.New()
-	return
-}
+	func (p *PaketUmroh) BeforeCreate(tx *gorm.DB) (err error) {
+		p.ID = uuid.New()
+		return
+	}

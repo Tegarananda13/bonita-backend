@@ -12,7 +12,7 @@ type Pendaftaran struct {
 	NomorPendaftaran   string    `gorm:"unique"`
 	CustomerID         uuid.UUID
 	PaketID            uuid.UUID
-	UserID             uuid.UUID
+	UserID             *uuid.UUID
 	PaymentStatus  string
 	DocumentStatus string
 	Status         string

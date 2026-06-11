@@ -19,7 +19,7 @@ func SetupRoutes(r *gin.Engine) {
 	// ======================
 
 	r.POST("/pendaftaran", controllers.CreatePendaftaran)
-	r.GET("/pendaftaran/:nomor", controllers.GetPendaftaranByNomor)
+	// r.GET("/pendaftaran/:nomor", controllers.GetPendaftaranByNomor)
 
 	r.POST("/otp/request", controllers.RequestOTP)
 	r.POST("/otp/verify", controllers.VerifyOTP)
@@ -72,6 +72,11 @@ func SetupRoutes(r *gin.Engine) {
 		admin.GET(
 			"/pendaftaran",
 			controllers.GetAllPendaftaran,
+		)
+
+		admin.PUT(
+			"/pendaftaran/:id/assign",
+			controllers.AssignPendaftaran,
 		)
 
 		admin.GET(

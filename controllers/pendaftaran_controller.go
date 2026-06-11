@@ -5,23 +5,25 @@ import (
 	"time"
 
 	"bonita-backend/config"
-	"bonita-backend/models"
 	"bonita-backend/helpers"
+	"bonita-backend/models"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type CreatePendaftaranRequest struct {
-	CustomerID string `json:"customer_id" binding:"required"`
-	PaketID    string `json:"paket_id" binding:"required"`
-	UserID     string `json:"user_id" binding:"required"`
+	Nama    string `json:"nama" binding:"required"`
+	NoHP    string `json:"no_hp" binding:"required"`
+	Email   string `json:"email"`
+	Alamat  string `json:"alamat"`
+	PaketID string `json:"paket_id" binding:"required"`
 }
 
 func CreatePendaftaran(c *gin.Context) {
 	var req CreatePendaftaranRequest
 
-	// bind JSON + validasi required
+	// validasi input
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Data tidak lengkap atau format salah",
@@ -29,63 +31,105 @@ func CreatePendaftaran(c *gin.Context) {
 		return
 	}
 
-	// parse UUID
-	customerID, err := uuid.Parse(req.CustomerID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "customer_id tidak valid"})
-		return
-	}
-
+	// parse paket ID
 	paketID, err := uuid.Parse(req.PaketID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "paket_id tidak valid"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "paket_id tidak valid",
+		})
 		return
 	}
 
-	userID, err := uuid.Parse(req.UserID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id tidak valid"})
-		return
-	}
-
-	// OPTIONAL 🔥: cek apakah data benar-benar ada di DB
-	var customer models.Customer
-	if err := config.DB.First(&customer, "id = ?", customerID).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "customer tidak ditemukan"})
-		return
-	}
-
+	// cari paket
 	var paket models.PaketUmroh
-	if err := config.DB.First(&paket, "id = ?", paketID).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "paket tidak ditemukan"})
+
+	if err := config.DB.
+		First(&paket, "id = ?", paketID).Error; err != nil {
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Paket tidak ditemukan",
+		})
 		return
 	}
 
-	// generate nomor
+	// =========================
+	// CEK KUOTA PAKET
+	// =========================
+	if paket.KuotaTerpakai >= paket.KuotaMax {
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Kuota paket sudah penuh",
+		})
+		return
+	}
+
+	// buat customer baru
+	customer := models.Customer{
+		Nama:      req.Nama,
+		NoHP:      req.NoHP,
+		Email:     req.Email,
+		Alamat:    req.Alamat,
+		CreatedAt: time.Now(),
+	}
+
+	if err := config.DB.
+		Create(&customer).Error; err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal membuat data customer",
+		})
+		return
+	}
+
+	// generate nomor pendaftaran
 	nomor := "UMR-" + time.Now().Format("20060102150405")
 
+	// buat pendaftaran
 	pendaftaran := models.Pendaftaran{
-		CustomerID:       customerID,
+		CustomerID:       customer.ID,
 		PaketID:          paketID,
-		UserID:           userID,
+		UserID:           nil,
 		NomorPendaftaran: nomor,
-		PaymentStatus:  helpers.PaymentBelum,
-		DocumentStatus: helpers.DocumentBelum,
-		Status:         helpers.StatusProses,
+		PaymentStatus:    helpers.PaymentBelum,
+		DocumentStatus:   helpers.DocumentBelum,
+		Status:           helpers.StatusProses,
 		TanggalDaftar:    time.Now(),
 	}
 
-	// save ke DB
-	if err := config.DB.Create(&pendaftaran).Error; err != nil {
+	// simpan pendaftaran
+	if err := config.DB.
+		Create(&pendaftaran).Error; err != nil {
+
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Gagal menyimpan pendaftaran",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	// =========================
+	// TAMBAH KUOTA TERPAKAI
+	// =========================
+	paket.KuotaTerpakai += 1
+
+	if err := config.DB.
+		Save(&paket).Error; err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal update kuota paket",
+		})
+		return
+	}
+
+	// response
+	c.JSON(http.StatusCreated, gin.H{
 		"message": "Pendaftaran berhasil",
-		"nomor":  nomor,
+		"data": gin.H{
+			"nomor_pendaftaran": nomor,
+			"nama_customer":     customer.Nama,
+			"paket":             paket.NamaPaket,
+			"status":            pendaftaran.Status,
+			"kuota_tersisa":     paket.KuotaMax - paket.KuotaTerpakai,
+		},
 	})
 }
 

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type Customer struct {
@@ -13,4 +14,9 @@ type Customer struct {
 	Email     string
 	Alamat    string
 	CreatedAt time.Time
+}
+
+func (c *Customer) BeforeCreate(tx *gorm.DB) (err error) {
+	c.ID = uuid.New()
+	return
 }
