@@ -16,6 +16,7 @@
 		Deskripsi         string
 		KuotaMax          int
 		KuotaTerpakai     int
+		BatasPendaftaran  int
 		CreatedAt         time.Time
 	}
 

@@ -53,6 +53,23 @@ func CreatePendaftaran(c *gin.Context) {
 	}
 
 	// =========================
+	// CEK BATAS PENDAFTARAN
+	// =========================
+	batasDaftar := paket.TanggalBerangkat.AddDate(
+		0,
+		0,
+		-paket.BatasPendaftaran,
+	)
+
+	if time.Now().After(batasDaftar) {
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Pendaftaran untuk paket ini sudah ditutup",
+		})
+		return
+	}
+
+	// =========================
 	// CEK KUOTA PAKET
 	// =========================
 	if paket.KuotaTerpakai >= paket.KuotaMax {

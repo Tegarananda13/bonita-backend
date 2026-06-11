@@ -19,6 +19,7 @@ func CreatePaket(c *gin.Context) {
 		Durasi           int       `json:"durasi"`
 		Deskripsi        string    `json:"deskripsi"`
 		KuotaMax         int       `json:"kuota_max"`
+		BatasPendaftaran int       `json:"batas_pendaftaran"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -43,6 +44,7 @@ func CreatePaket(c *gin.Context) {
 		Deskripsi:        req.Deskripsi,
 		KuotaMax:         req.KuotaMax,
 		KuotaTerpakai:    0,
+		BatasPendaftaran: req.BatasPendaftaran,
 		CreatedAt:        time.Now(),
 	}
 
@@ -120,6 +122,7 @@ func UpdatePaket(c *gin.Context) {
 		Durasi           int       `json:"durasi"`
 		Deskripsi        string    `json:"deskripsi"`
 		KuotaMax         int       `json:"kuota_max"`
+		BatasPendaftaran int       `json:"batas_pendaftaran"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -142,6 +145,7 @@ func UpdatePaket(c *gin.Context) {
 	paket.Durasi = req.Durasi
 	paket.Deskripsi = req.Deskripsi
 	paket.KuotaMax = req.KuotaMax
+	paket.BatasPendaftaran = req.BatasPendaftaran
 
 	if err := config.DB.Save(&paket).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
