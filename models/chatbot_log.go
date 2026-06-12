@@ -8,8 +8,8 @@ import (
 )
 
 type ChatbotLog struct {
-	ID         uuid.UUID `gorm:"type:uuid;primaryKey"`
-	CustomerID uuid.UUID
+	ID         uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	CustomerID *uuid.UUID `gorm:"type:uuid;null"`
 	Pertanyaan string
 	Jawaban    string
 	CreatedAt  time.Time

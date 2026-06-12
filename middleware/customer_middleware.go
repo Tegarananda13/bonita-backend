@@ -2,7 +2,8 @@ package middleware
 
 import (
 	"net/http"
-		"time"
+	"strings"
+	"time"
 
 	"bonita-backend/config"
 	"bonita-backend/models"
@@ -14,16 +15,30 @@ func CustomerMiddleware() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 
-		token := c.GetHeader("X-Customer-Token")
+		authHeader := c.GetHeader("Authorization")
 
-		if token == "" {
+		if authHeader == "" {
 
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Customer token diperlukan",
+				"error": "Token diperlukan",
 			})
 			c.Abort()
 			return
 		}
+
+		// Format: Bearer xxxxx
+		tokenParts := strings.Split(authHeader, " ")
+
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Format token tidak valid",
+			})
+			c.Abort()
+			return
+		}
+
+		token := tokenParts[1]
 
 		var session models.CustomerSession
 
@@ -32,22 +47,27 @@ func CustomerMiddleware() gin.HandlerFunc {
 			First(&session).Error; err != nil {
 
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Customer token tidak valid",
+				"error": "Token customer tidak valid",
 			})
 			c.Abort()
 			return
 		}
 
+		// cek masa berlaku session
 		if time.Now().After(session.ExpiredAt) {
 
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Customer token sudah expired",
+				"error": "Session customer sudah expired",
 			})
 			c.Abort()
 			return
 		}
 
-		c.Set("pendaftaran_id", session.PendaftaranID)
+		// simpan pendaftaran ID ke context
+		c.Set(
+			"pendaftaran_id",
+			session.PendaftaranID,
+		)
 
 		c.Next()
 	}

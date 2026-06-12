@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"time"
+	"os"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -13,7 +14,15 @@ import (
 var DB *gorm.DB
 
 func ConnectDatabase() {
-	dsn := "host=localhost user=postgres password=konfidentiell dbname=bonita_umroh_db port=5432 sslmode=disable"
+	dsn := fmt.Sprintf(
+    "host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
+    os.Getenv("DB_HOST"),
+    os.Getenv("DB_USER"),
+    os.Getenv("DB_PASSWORD"),
+    os.Getenv("DB_NAME"),
+    os.Getenv("DB_PORT"),
+    os.Getenv("DB_SSLMODE"),
+)
 
 	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		NamingStrategy: schema.NamingStrategy{

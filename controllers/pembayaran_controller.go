@@ -147,6 +147,7 @@ func GetPembayaran(c *gin.Context) {
 }
 
 func UploadBuktiPembayaran(c *gin.Context) {
+
 	pendaftaranID := c.MustGet("pendaftaran_id")
 
 	var pendaftaran models.Pendaftaran
@@ -165,7 +166,7 @@ func UploadBuktiPembayaran(c *gin.Context) {
 	}
 
 	// ambil file
-	file, err := c.FormFile("bukti")
+	fileHeader, err := c.FormFile("bukti")
 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -174,20 +175,36 @@ func UploadBuktiPembayaran(c *gin.Context) {
 		return
 	}
 
+	// buka file
+	file, err := fileHeader.Open()
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal membaca file",
+		})
+		return
+	}
+
+	defer file.Close()
+
 	// nama file unik
 	filename := fmt.Sprintf(
 		"%d_%s",
 		time.Now().Unix(),
-		file.Filename,
+		fileHeader.Filename,
 	)
 
-	// path simpan
-	filepath := "uploads/" + filename
+	// upload ke Supabase bucket pembayaran
+	fileURL, err := helpers.UploadToSupabase(
+		file,
+		filename,
+		"pembayaran",
+	)
 
-	// save file
-	if err := c.SaveUploadedFile(file, filepath); err != nil {
+	if err != nil {
+
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Gagal menyimpan file",
+			"error": "Gagal upload bukti pembayaran",
 		})
 		return
 	}
@@ -211,24 +228,24 @@ func UploadBuktiPembayaran(c *gin.Context) {
 		return
 	}
 
-	// update path file
-	pembayaran.BuktiPembayaran = "/" + filepath
+	// update URL bukti pembayaran
+	pembayaran.BuktiPembayaran = fileURL
 
 	if err := config.DB.
-	Model(&pembayaran).
-	Update(
-		"bukti_pembayaran",
-		pembayaran.BuktiPembayaran,
-	).Error; err != nil {
+		Model(&pembayaran).
+		Update(
+			"bukti_pembayaran",
+			pembayaran.BuktiPembayaran,
+		).Error; err != nil {
 
-	c.JSON(http.StatusInternalServerError, gin.H{
-		"error": err.Error(),
-	})
-	return
-}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal update bukti pembayaran",
+		})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Bukti pembayaran berhasil diupload",
-		"file":    pembayaran.BuktiPembayaran,
+		"file": pembayaran.BuktiPembayaran,
 	})
 }
