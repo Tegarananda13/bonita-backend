@@ -66,6 +66,7 @@ func GetAllPaket(c *gin.Context) {
 	var paket []models.PaketUmroh
 
 	if err := config.DB.
+		Preload("Fasilitas").
 		Order("tanggal_berangkat ASC").
 		Find(&paket).Error; err != nil {
 
@@ -87,6 +88,7 @@ func GetPaketByID(c *gin.Context) {
 	var paket models.PaketUmroh
 
 	if err := config.DB.
+		Preload("Fasilitas").
 		First(&paket, "id = ?", id).Error; err != nil {
 
 		c.JSON(http.StatusNotFound, gin.H{

@@ -100,52 +100,89 @@ func UploadDokumen(c *gin.Context) {
 	})
 }
 
-func GetDokumenByNomor(c *gin.Context) {
+func GetDokumen(c *gin.Context) {
 
-	nomor := c.Param("nomor")
+    // ambil pendaftaran dari customer token
+    pendaftaranID := c.MustGet("pendaftaran_id")
 
-	// cari pendaftaran
-	var pendaftaran models.Pendaftaran
+    // ambil semua dokumen milik pendaftaran tersebut
+    var dokumen []models.Dokumen
 
-	if err := config.DB.
-		First(&pendaftaran, "nomor_pendaftaran = ?", nomor).Error; err != nil {
+    if err := config.DB.
+        Where("pendaftaran_id = ?", pendaftaranID).
+        Order("created_at DESC").
+        Find(&dokumen).Error; err != nil {
 
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Pendaftaran tidak ditemukan",
-		})
-		return
-	}
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": "Gagal mengambil dokumen",
+        })
+        return
+    }
 
-	// ambil semua dokumen
-	var dokumen []models.Dokumen
+    // format response
+    var result []gin.H
 
-	if err := config.DB.
-		Where("pendaftaran_id = ?", pendaftaran.ID).
-		Order("created_at DESC").
-		Find(&dokumen).Error; err != nil {
+    for _, d := range dokumen {
 
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Gagal mengambil dokumen",
-		})
-		return
-	}
+        result = append(result, gin.H{
+            "id":          d.ID,
+            "jenis":       d.JenisDokumen,
+            "status":      d.StatusValidasi,
+            "file":        d.FilePath,
+            "uploaded_at": d.CreatedAt,
+        })
+    }
 
-	// response clean
-	var result []gin.H
-
-	for _, d := range dokumen {
-
-		result = append(result, gin.H{
-			"id":          d.ID,
-			"jenis":       d.JenisDokumen,
-			"status":      d.StatusValidasi,
-			"file":        d.FilePath,
-			"uploaded_at": d.CreatedAt,
-		})
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"nomor":   nomor,
-		"dokumen": result,
-	})
+    c.JSON(http.StatusOK, gin.H{
+        "dokumen": result,
+    })
 }
+// func GetDokumenByNomor(c *gin.Context) {
+
+// 	nomor := c.Param("nomor")
+
+// 	// cari pendaftaran
+// 	var pendaftaran models.Pendaftaran
+
+// 	if err := config.DB.
+// 		First(&pendaftaran, "nomor_pendaftaran = ?", nomor).Error; err != nil {
+
+// 		c.JSON(http.StatusNotFound, gin.H{
+// 			"error": "Pendaftaran tidak ditemukan",
+// 		})
+// 		return
+// 	}
+
+// 	// ambil semua dokumen
+// 	var dokumen []models.Dokumen
+
+// 	if err := config.DB.
+// 		Where("pendaftaran_id = ?", pendaftaran.ID).
+// 		Order("created_at DESC").
+// 		Find(&dokumen).Error; err != nil {
+
+// 		c.JSON(http.StatusInternalServerError, gin.H{
+// 			"error": "Gagal mengambil dokumen",
+// 		})
+// 		return
+// 	}
+
+// 	// response clean
+// 	var result []gin.H
+
+// 	for _, d := range dokumen {
+
+// 		result = append(result, gin.H{
+// 			"id":          d.ID,
+// 			"jenis":       d.JenisDokumen,
+// 			"status":      d.StatusValidasi,
+// 			"file":        d.FilePath,
+// 			"uploaded_at": d.CreatedAt,
+// 		})
+// 	}
+
+// 	c.JSON(http.StatusOK, gin.H{
+// 		"nomor":   nomor,
+// 		"dokumen": result,
+// 	})
+// }

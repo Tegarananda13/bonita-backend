@@ -13,5 +13,6 @@ func Migrate() {
 		&models.VerifikasiOTP{},
 		&models.ChatbotLog{},
 		&models.CustomerSession{},
+		&models.DetailFasilitas{},
 	)
 }

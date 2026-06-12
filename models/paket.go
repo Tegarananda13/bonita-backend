@@ -18,6 +18,8 @@
 		KuotaTerpakai     int
 		BatasPendaftaran  int
 		CreatedAt         time.Time
+
+		Fasilitas []DetailFasilitas `gorm:"foreignKey:PaketID"`
 	}
 
 	func (p *PaketUmroh) BeforeCreate(tx *gorm.DB) (err error) {

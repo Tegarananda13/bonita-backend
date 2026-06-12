@@ -101,36 +101,49 @@ func CreatePembayaran(c *gin.Context) {
 	})
 }
 
-func GetPembayaranByNomor(c *gin.Context) {
-	nomor := c.Param("nomor")
+func GetPembayaran(c *gin.Context) {
 
-	var pendaftaran models.Pendaftaran
+    // ambil dari customer token
+    pendaftaranID := c.MustGet("pendaftaran_id")
 
-	if err := config.DB.First(&pendaftaran, "nomor_pendaftaran = ?", nomor).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
-		return
-	}
+    var pembayaran []models.Pembayaran
 
-	var pembayaran []models.Pembayaran
+    if err := config.DB.
+        Where("pendaftaran_id = ?", pendaftaranID).
+        Order("tanggal_bayar DESC").
+        Find(&pembayaran).Error; err != nil {
 
-	config.DB.Where("pendaftaran_id = ?", pendaftaran.ID).Find(&pembayaran)
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": "Gagal mengambil pembayaran",
+        })
+        return
+    }
 
-	// 🔥 mapping ke response clean
-	var result []gin.H
+    // response clean
+    var result []gin.H
 
-	for _, p := range pembayaran {
-		result = append(result, gin.H{
-			"id":      p.ID,
-			"jumlah":  p.Jumlah,
-			"status":  p.Status,
-			"tanggal": p.TanggalBayar,
-		})
-	}
+    var totalDibayar float64
 
-	c.JSON(http.StatusOK, gin.H{
-		"nomor":      nomor,
-		"pembayaran": result,
-	})
+    for _, p := range pembayaran {
+
+        // hitung hanya pembayaran yang sudah diterima
+        if p.Status == helpers.PaymentVerificationDiterima {
+            totalDibayar += p.Jumlah
+        }
+
+        result = append(result, gin.H{
+            "id":       p.ID,
+            "jumlah":   p.Jumlah,
+            "status":   p.Status,
+            "tanggal":  p.TanggalBayar,
+            "bukti":    p.BuktiPembayaran,
+        })
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "total_dibayar": totalDibayar,
+        "riwayat":       result,
+    })
 }
 
 func UploadBuktiPembayaran(c *gin.Context) {

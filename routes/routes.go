@@ -12,21 +12,40 @@ func SetupRoutes(r *gin.Engine) {
 	// ======================
 	// LOGIN
 	// ======================
-	r.POST("/login", controllers.Login)
+	r.POST(
+		"/login",
+		controllers.Login,
+	)
 
 	// ======================
 	// PUBLIC (CUSTOMER)
 	// ======================
+	r.GET(
+		"/paket",
+		controllers.GetPaket,
+	)
 
-	r.POST("/pendaftaran", controllers.CreatePendaftaran)
+	r.GET(
+		"/paket/:id",
+		controllers.GetDetailPaket,
+	)
+
+	r.POST(
+		"/pendaftaran",
+		controllers.CreatePendaftaran,
+	)
 	// r.GET("/pendaftaran/:nomor", controllers.GetPendaftaranByNomor)
 
-	r.POST("/otp/request", controllers.RequestOTP)
-	r.POST("/otp/verify", controllers.VerifyOTP)
+	r.POST(
+		"/otp/request",
+		controllers.RequestOTP,
+	)
+	r.POST(
+		"/otp/verify",
+		controllers.VerifyOTP,
+	)
 
 	// hanya lihat status
-	r.GET("/pembayaran/:nomor", controllers.GetPembayaranByNomor)
-	r.GET("/dokumen/:nomor", controllers.GetDokumenByNomor)
 
 	// ======================
 	// CUSTOMER SESSION (OTP)
@@ -48,9 +67,19 @@ func SetupRoutes(r *gin.Engine) {
 			controllers.UploadBuktiPembayaran,
 		)
 
+		customer.GET(
+			"/pembayaran",
+			controllers.GetPembayaran,
+		)
+
 		customer.POST(
 			"/dokumen/upload",
 			controllers.UploadDokumen,
+		)
+
+		customer.GET(
+			"/dokumen",
+			controllers.GetDokumen,
 		)
 	}
 	// ======================
@@ -117,6 +146,26 @@ func SetupRoutes(r *gin.Engine) {
 		admin.POST(
 			"/paket",
 			controllers.CreatePaket,
+		)
+
+		admin.POST(
+			"/paket/:id/fasilitas",
+			controllers.CreateFasilitas,
+		)
+
+		admin.GET(
+			"/paket/:id/fasilitas",
+			controllers.GetFasilitasByPaket,
+		)
+
+		admin.PUT(
+			"/fasilitas/:id",
+			controllers.UpdateFasilitas,
+		)
+
+		admin.DELETE(
+			"/fasilitas/:id",
+			controllers.DeleteFasilitas,
 		)
 
 		admin.PUT(
