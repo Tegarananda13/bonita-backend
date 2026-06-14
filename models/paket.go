@@ -10,6 +10,7 @@
 	type PaketUmroh struct {
 		ID                uuid.UUID `gorm:"type:uuid;primaryKey"`
 		NamaPaket         string
+		FotoPaket		  string
 		Harga             float64
 		TanggalBerangkat  time.Time
 		Durasi            int

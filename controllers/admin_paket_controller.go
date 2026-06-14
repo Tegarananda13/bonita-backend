@@ -1,10 +1,13 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"bonita-backend/config"
+	"bonita-backend/helpers"
 	"bonita-backend/models"
 
 	"github.com/gin-gonic/gin"
@@ -12,53 +15,181 @@ import (
 
 func CreatePaket(c *gin.Context) {
 
-	var req struct {
-		NamaPaket        string    `json:"nama_paket"`
-		Harga            float64   `json:"harga"`
-		TanggalBerangkat time.Time `json:"tanggal_berangkat"`
-		Durasi           int       `json:"durasi"`
-		Deskripsi        string    `json:"deskripsi"`
-		KuotaMax         int       `json:"kuota_max"`
-		BatasPendaftaran int       `json:"batas_pendaftaran"`
-	}
+	// =========================
+	// Ambil data dari form
+	// =========================
 
-	if err := c.ShouldBindJSON(&req); err != nil {
+	namaPaket := c.PostForm("nama_paket")
+	deskripsi := c.PostForm("deskripsi")
+
+	harga, err := strconv.ParseFloat(
+		c.PostForm("harga"),
+		64,
+	)
+
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Data tidak valid",
+			"error": "Harga tidak valid",
 		})
 		return
 	}
 
-	if req.KuotaMax <= 0 {
+	durasi, err := strconv.Atoi(
+		c.PostForm("durasi"),
+	)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Durasi tidak valid",
+		})
+		return
+	}
+
+	kuotaMax, err := strconv.Atoi(
+		c.PostForm("kuota_max"),
+	)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Kuota maksimal tidak valid",
+		})
+		return
+	}
+
+	batasPendaftaran, err := strconv.Atoi(
+		c.PostForm("batas_pendaftaran"),
+	)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Batas pendaftaran tidak valid",
+		})
+		return
+	}
+
+	tanggalBerangkat, err := time.Parse(
+		time.RFC3339,
+		c.PostForm("tanggal_berangkat"),
+	)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Tanggal berangkat tidak valid",
+		})
+		return
+	}
+
+
+	// =========================
+	// Validasi kuota
+	// =========================
+
+	if kuotaMax <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Kuota maksimal harus lebih dari 0",
 		})
 		return
 	}
 
+
+	// =========================
+	// Ambil foto paket
+	// =========================
+
+	file, err := c.FormFile("foto")
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Foto paket wajib diupload",
+		})
+		return
+	}
+
+
+	// buka file
+	openFile, err := file.Open()
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal membuka file foto",
+		})
+		return
+	}
+
+	defer openFile.Close()
+
+
+	// nama file unik
+	filename := fmt.Sprintf(
+		"%d_%s",
+		time.Now().Unix(),
+		file.Filename,
+	)
+
+
+	// upload ke Supabase bucket paket
+	fotoURL, err := helpers.UploadToSupabase(
+		openFile,
+		filename,
+		"paket",
+	)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal upload foto paket",
+		})
+		return
+	}
+
+
+	// =========================
+	// Simpan paket ke database
+	// =========================
+
 	paket := models.PaketUmroh{
-		NamaPaket:        req.NamaPaket,
-		Harga:            req.Harga,
-		TanggalBerangkat: req.TanggalBerangkat,
-		Durasi:           req.Durasi,
-		Deskripsi:        req.Deskripsi,
-		KuotaMax:         req.KuotaMax,
+		NamaPaket:        namaPaket,
+		FotoPaket:        fotoURL,
+		Harga:            harga,
+		TanggalBerangkat: tanggalBerangkat,
+		Durasi:           durasi,
+		Deskripsi:        deskripsi,
+		KuotaMax:         kuotaMax,
 		KuotaTerpakai:    0,
-		BatasPendaftaran: req.BatasPendaftaran,
+		BatasPendaftaran: batasPendaftaran,
 		CreatedAt:        time.Now(),
 	}
 
-	if err := config.DB.Create(&paket).Error; err != nil {
+
+	if err := config.DB.
+		Create(&paket).Error; err != nil {
+
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Gagal membuat paket",
 		})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Paket berhasil dibuat",
-		"data":    paket,
-	})
+
+	// =========================
+	// Response
+	// =========================
+
+	c.JSON(http.StatusOK, gin.H{
+    "message": "Paket berhasil dibuat",
+    "data": gin.H{
+        "id": paket.ID,
+        "nama_paket": paket.NamaPaket,
+        "foto_paket": paket.FotoPaket,
+        "harga": paket.Harga,
+        "tanggal_berangkat": paket.TanggalBerangkat,
+        "durasi": paket.Durasi,
+        "deskripsi": paket.Deskripsi,
+        "kuota_max": paket.KuotaMax,
+        "kuota_terpakai": paket.KuotaTerpakai,
+        "batas_pendaftaran": paket.BatasPendaftaran,
+        "created_at": paket.CreatedAt,
+    },
+})
 }
 
 func GetAllPaket(c *gin.Context) {
@@ -108,6 +239,7 @@ func UpdatePaket(c *gin.Context) {
 
 	var paket models.PaketUmroh
 
+	// cari paket
 	if err := config.DB.
 		First(&paket, "id = ?", id).Error; err != nil {
 
@@ -117,49 +249,188 @@ func UpdatePaket(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		NamaPaket        string    `json:"nama_paket"`
-		Harga            float64   `json:"harga"`
-		TanggalBerangkat time.Time `json:"tanggal_berangkat"`
-		Durasi           int       `json:"durasi"`
-		Deskripsi        string    `json:"deskripsi"`
-		KuotaMax         int       `json:"kuota_max"`
-		BatasPendaftaran int       `json:"batas_pendaftaran"`
-	}
+	oldPhoto := paket.FotoPaket
 
-	if err := c.ShouldBindJSON(&req); err != nil {
+	// =========================
+	// Ambil data form
+	// =========================
+
+	namaPaket := c.PostForm("nama_paket")
+	deskripsi := c.PostForm("deskripsi")
+
+	harga, err := strconv.ParseFloat(
+		c.PostForm("harga"),
+		64,
+	)
+
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Data tidak valid",
+			"error": "Harga tidak valid",
 		})
 		return
 	}
 
-	if req.KuotaMax < paket.KuotaTerpakai {
+	durasi, err := strconv.Atoi(
+		c.PostForm("durasi"),
+	)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Durasi tidak valid",
+		})
+		return
+	}
+
+	kuotaMax, err := strconv.Atoi(
+		c.PostForm("kuota_max"),
+	)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Kuota maksimal tidak valid",
+		})
+		return
+	}
+
+	batasPendaftaran, err := strconv.Atoi(
+		c.PostForm("batas_pendaftaran"),
+	)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Batas pendaftaran tidak valid",
+		})
+		return
+	}
+
+	tanggalBerangkat, err := time.Parse(
+		time.RFC3339,
+		c.PostForm("tanggal_berangkat"),
+	)
+
+	if err != nil {
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Tanggal berangkat tidak valid",
+		})
+		return
+	}
+
+	// =========================
+	// Validasi kuota
+	// =========================
+
+	if kuotaMax < paket.KuotaTerpakai {
+
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Kuota maksimal tidak boleh lebih kecil dari jumlah jamaah yang sudah terdaftar",
 		})
 		return
 	}
 
-	paket.NamaPaket = req.NamaPaket
-	paket.Harga = req.Harga
-	paket.TanggalBerangkat = req.TanggalBerangkat
-	paket.Durasi = req.Durasi
-	paket.Deskripsi = req.Deskripsi
-	paket.KuotaMax = req.KuotaMax
-	paket.BatasPendaftaran = req.BatasPendaftaran
+	// =========================
+	// Cek apakah ada foto baru
+	// =========================
 
-	if err := config.DB.Save(&paket).Error; err != nil {
+	file, err := c.FormFile("foto")
+
+	if err == nil {
+
+		// buka file
+		openFile, err := file.Open()
+
+		if err != nil {
+
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Gagal membuka foto",
+			})
+			return
+		}
+
+		defer openFile.Close()
+
+		// nama file unik
+		filename := fmt.Sprintf(
+			"%d_%s",
+			time.Now().Unix(),
+			file.Filename,
+		)
+
+		// upload ke supabase
+		fotoURL, err := helpers.UploadToSupabase(
+			openFile,
+			filename,
+			"paket",
+		)
+
+		if err != nil {
+
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Gagal upload foto paket",
+			})
+			return
+		}
+
+		// update foto baru
+		paket.FotoPaket = fotoURL
+
+		// hapus foto lama dari Supabase
+		if oldPhoto != "" {
+
+			err := helpers.DeleteFromSupabase(
+				oldPhoto,
+				"paket",
+			)
+
+			if err != nil {
+
+				fmt.Println(
+					"Gagal menghapus foto lama:",
+					err,
+				)
+			}
+		}
+	}
+
+	// =========================
+	// Update data paket
+	// =========================
+
+	paket.NamaPaket = namaPaket
+	paket.Harga = harga
+	paket.TanggalBerangkat = tanggalBerangkat
+	paket.Durasi = durasi
+	paket.Deskripsi = deskripsi
+	paket.KuotaMax = kuotaMax
+	paket.BatasPendaftaran = batasPendaftaran
+
+
+	if err := config.DB.
+		Save(&paket).Error; err != nil {
+
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Gagal update paket",
 		})
 		return
 	}
 
+
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Paket berhasil diupdate",
-		"data": paket,
-	})
+    "message": "Paket berhasil diupdate",
+    "data": gin.H{
+        "id": paket.ID,
+        "nama_paket": paket.NamaPaket,
+        "foto_paket": paket.FotoPaket,
+        "harga": paket.Harga,
+        "tanggal_berangkat": paket.TanggalBerangkat,
+        "durasi": paket.Durasi,
+        "deskripsi": paket.Deskripsi,
+        "kuota_max": paket.KuotaMax,
+        "kuota_terpakai": paket.KuotaTerpakai,
+        "batas_pendaftaran": paket.BatasPendaftaran,
+        "created_at": paket.CreatedAt,
+    },
+})
 }
 
 func DeletePaket(c *gin.Context) {

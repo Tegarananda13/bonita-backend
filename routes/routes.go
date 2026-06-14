@@ -45,6 +45,11 @@ func SetupRoutes(r *gin.Engine) {
 		controllers.VerifyOTP,
 	)
 
+	r.POST(
+		"/chatbot",
+		controllers.Chatbot,
+	)
+
 	// hanya lihat status
 
 	// ======================

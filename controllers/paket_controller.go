@@ -30,12 +30,13 @@ func GetPaket(c *gin.Context) {
 		sisaKuota := paket.KuotaMax - paket.KuotaTerpakai
 
 		result = append(result, gin.H{
-			"id":                  paket.ID,
-			"nama_paket":          paket.NamaPaket,
-			"harga":               paket.Harga,
-			"durasi":              paket.Durasi,
-			"tanggal_berangkat":   paket.TanggalBerangkat,
-			"sisa_kuota":          sisaKuota,
+		"id":                 paket.ID,
+		"nama_paket":         paket.NamaPaket,
+		"foto_paket":         paket.FotoPaket,
+		"harga":              paket.Harga,
+		"durasi":             paket.Durasi,
+		"tanggal_berangkat":  paket.TanggalBerangkat,
+		"sisa_kuota":         sisaKuota,
 		})
 	}
 
@@ -78,6 +79,8 @@ func GetDetailPaket(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"id": paket.ID,
 		"nama_paket": paket.NamaPaket,
+		"foto_paket": paket.FotoPaket,
+		"deskripsi": paket.Deskripsi,
 		"harga": paket.Harga,
 		"durasi": paket.Durasi,
 		"tanggal_berangkat": paket.TanggalBerangkat,
