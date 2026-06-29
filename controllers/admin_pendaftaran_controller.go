@@ -46,6 +46,54 @@ func GetAllPendaftaran(c *gin.Context) {
 		"data":  result,
 	})
 }
+
+// GetPendaftaranSaya - mengambil pendaftaran yang di-assign ke admin login
+func GetPendaftaranSaya(c *gin.Context) {
+
+	userIDString := c.MustGet("user_id").(string)
+
+	userID, err := uuid.Parse(userIDString)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID tidak valid"})
+		return
+	}
+
+	var pendaftaran []models.Pendaftaran
+
+	if err := config.DB.
+		Preload("Customer").
+		Preload("Paket").
+		Where("user_id = ?", userID).
+		Order("tanggal_daftar DESC").
+		Find(&pendaftaran).Error; err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal mengambil data",
+		})
+		return
+	}
+
+	var result []gin.H
+
+	for _, p := range pendaftaran {
+		result = append(result, gin.H{
+			"id":                p.ID,
+			"nomor_pendaftaran": p.NomorPendaftaran,
+			"nama_customer":     p.Customer.Nama,
+			"paket":             p.Paket.NamaPaket,
+			"payment_status":    p.PaymentStatus,
+			"document_status":   p.DocumentStatus,
+			"status":            p.Status,
+			"tanggal_daftar":    p.TanggalDaftar,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"total": len(result),
+		"data":  result,
+	})
+}
+
 func GetDetailPendaftaran(c *gin.Context) {
 
 	nomor := c.Param("nomor")

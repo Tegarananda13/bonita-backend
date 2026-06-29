@@ -77,6 +77,11 @@ func SetupRoutes(r *gin.Engine) {
 			controllers.GetPembayaran,
 		)
 
+		customer.GET(
+			"/dashboard",
+			controllers.GetCustomerDashboard,
+		)
+
 		customer.POST(
 			"/dokumen/upload",
 			controllers.UploadDokumen,
@@ -108,6 +113,11 @@ func SetupRoutes(r *gin.Engine) {
 			controllers.GetAllPendaftaran,
 		)
 
+		admin.GET(
+			"/pendaftaran/saya",
+			controllers.GetPendaftaranSaya,
+		)
+
 		admin.PUT(
 			"/pendaftaran/:id/assign",
 			controllers.AssignPendaftaran,
@@ -116,6 +126,11 @@ func SetupRoutes(r *gin.Engine) {
 		admin.GET(
 			"/pendaftaran/:nomor",
 			controllers.GetDetailPendaftaran,
+		)
+
+		admin.GET(
+			"/pembayaran/pending",
+			controllers.GetPendingPembayaran,
 		)
 
 		admin.PUT(
@@ -129,8 +144,8 @@ func SetupRoutes(r *gin.Engine) {
 		)
 
 		admin.GET(
-			"/pembayaran/pending",
-			controllers.GetPendingPembayaran,
+			"/dokumen/pending",
+			controllers.GetPendingDokumen,
 		)
 
 		admin.PUT(
@@ -141,11 +156,6 @@ func SetupRoutes(r *gin.Engine) {
 		admin.GET(
 			"/dokumen/:id",
 			controllers.GetDetailDokumen,
-		)
-
-		admin.GET(
-			"/dokumen/pending",
-			controllers.GetPendingDokumen,
 		)
 
 		admin.POST(

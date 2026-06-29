@@ -11,19 +11,18 @@ import (
 
 func GetDashboard(c *gin.Context) {
 
+	var totalPaket int64
 	var totalPendaftaran int64
-	var siapBerangkat int64
 	var pendingPembayaran int64
 	var pendingDokumen int64
 
 	config.DB.
-		Model(&models.Pendaftaran{}).
-		Count(&totalPendaftaran)
+		Model(&models.PaketUmroh{}).
+		Count(&totalPaket)
 
 	config.DB.
 		Model(&models.Pendaftaran{}).
-		Where("status = ?", helpers.StatusSiapBerangkat).
-		Count(&siapBerangkat)
+		Count(&totalPendaftaran)
 
 	config.DB.
 		Model(&models.Pembayaran{}).
@@ -36,9 +35,9 @@ func GetDashboard(c *gin.Context) {
 		Count(&pendingDokumen)
 
 	c.JSON(http.StatusOK, gin.H{
-		"total_pendaftaran": totalPendaftaran,
-		"siap_berangkat": siapBerangkat,
-		"pending_pembayaran": pendingPembayaran,
-		"pending_dokumen": pendingDokumen,
+		"total_paket":               totalPaket,
+		"total_pendaftaran":         totalPendaftaran,
+		"total_pembayaran_pending":  pendingPembayaran,
+		"total_dokumen_pending":     pendingDokumen,
 	})
 }

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"bonita-backend/config"
-	"bonita-backend/models"
 	"bonita-backend/helpers"
+	"bonita-backend/models"
 
 	"github.com/gin-gonic/gin"
 )
@@ -99,6 +99,34 @@ func CreatePembayaran(c *gin.Context) {
 			"status": pembayaran.Status,
 		},
 	})
+}
+
+func GetCustomerDashboard(c *gin.Context) {
+
+    pendaftaranID := c.MustGet("pendaftaran_id")
+
+    var pendaftaran models.Pendaftaran
+
+    if err := config.DB.
+        Preload("Customer").
+        Preload("Paket").
+        First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+
+        c.JSON(http.StatusNotFound, gin.H{
+            "error": "Pendaftaran tidak ditemukan",
+        })
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "nama":            pendaftaran.Customer.Nama,
+        "nomor":           pendaftaran.NomorPendaftaran,
+        "paket":           pendaftaran.Paket.NamaPaket,
+        "harga":           pendaftaran.Paket.Harga,
+        "payment_status":  pendaftaran.PaymentStatus,
+        "document_status": pendaftaran.DocumentStatus,
+        "status":          pendaftaran.Status,
+    })
 }
 
 func GetPembayaran(c *gin.Context) {
