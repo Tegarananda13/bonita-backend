@@ -91,12 +91,22 @@ func CreatePembayaran(c *gin.Context) {
 		return
 	}
 
+	// 🧾 Generate nomor invoice saat pembayaran pertama (jika belum ada)
+	if pendaftaran.NomorInvoice == "" {
+		nomorInvoice, err := helpers.GenerateNomorInvoice(config.DB)
+		if err == nil {
+			config.DB.Model(&pendaftaran).Update("nomor_invoice", nomorInvoice)
+			pendaftaran.NomorInvoice = nomorInvoice
+		}
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Pembayaran berhasil dibuat",
 		"data": gin.H{
-			"id":     pembayaran.ID,
-			"jumlah": pembayaran.Jumlah,
-			"status": pembayaran.Status,
+			"id":             pembayaran.ID,
+			"jumlah":         pembayaran.Jumlah,
+			"status":         pembayaran.Status,
+			"nomor_invoice":  pendaftaran.NomorInvoice,
 		},
 	})
 }
@@ -134,11 +144,20 @@ func GetPembayaran(c *gin.Context) {
     // ambil dari customer token
     pendaftaranID := c.MustGet("pendaftaran_id")
 
+    // ambil pendaftaran + paket untuk harga dan nomor invoice
+    var pendaftaran models.Pendaftaran
+    if err := config.DB.
+        Preload("Paket").
+        First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+        c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
+        return
+    }
+
     var pembayaran []models.Pembayaran
 
     if err := config.DB.
         Where("pendaftaran_id = ?", pendaftaranID).
-        Order("tanggal_bayar DESC").
+        Order("tanggal_bayar ASC").
         Find(&pembayaran).Error; err != nil {
 
         c.JSON(http.StatusInternalServerError, gin.H{
@@ -160,19 +179,23 @@ func GetPembayaran(c *gin.Context) {
         }
 
         result = append(result, gin.H{
-            "id":       p.ID,
-            "jumlah":   p.Jumlah,
-            "status":   p.Status,
-            "tanggal":  p.TanggalBayar,
-            "bukti":    p.BuktiPembayaran,
+            "id":      p.ID,
+            "jumlah":  p.Jumlah,
+            "status":  p.Status,
+            "tanggal": p.TanggalBayar,
+            "bukti":   p.BuktiPembayaran,
         })
     }
 
     c.JSON(http.StatusOK, gin.H{
-        "total_dibayar": totalDibayar,
-        "riwayat":       result,
+        "total_dibayar":  totalDibayar,
+        "harga_paket":    pendaftaran.Paket.Harga,
+        "payment_status": pendaftaran.PaymentStatus,
+        "nomor_invoice":  pendaftaran.NomorInvoice,
+        "riwayat":        result,
     })
 }
+
 
 func UploadBuktiPembayaran(c *gin.Context) {
 

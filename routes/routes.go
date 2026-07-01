@@ -91,6 +91,11 @@ func SetupRoutes(r *gin.Engine) {
 			"/dokumen",
 			controllers.GetDokumen,
 		)
+
+		customer.GET(
+			"/invoice",
+			controllers.GetInvoice,
+		)
 	}
 	// ======================
 	// ADMIN & OWNER
@@ -121,6 +126,11 @@ func SetupRoutes(r *gin.Engine) {
 		admin.PUT(
 			"/pendaftaran/:id/assign",
 			controllers.AssignPendaftaran,
+		)
+
+		admin.PUT(
+			"/pendaftaran/:id/selesai",
+			controllers.TandaiSelesai,
 		)
 
 		admin.GET(

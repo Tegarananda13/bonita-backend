@@ -13,15 +13,16 @@ type Pendaftaran struct {
 	CustomerID         uuid.UUID
 	PaketID            uuid.UUID
 	UserID             *uuid.UUID
-	PaymentStatus  string
-	DocumentStatus string
-	Status         string
+	NomorInvoice       string    `gorm:"default:''"`
+	PaymentStatus      string
+	DocumentStatus     string
+	Status             string
 	TanggalDaftar      time.Time
 
 	// Relasi
-	Customer Customer `gorm:"foreignKey:CustomerID"`
+	Customer Customer   `gorm:"foreignKey:CustomerID"`
 	Paket    PaketUmroh `gorm:"foreignKey:PaketID"`
-	User     User `gorm:"foreignKey:UserID"`
+	User     User       `gorm:"foreignKey:UserID"`
 }
 
 func (p *Pendaftaran) BeforeCreate(tx *gorm.DB) (err error) {

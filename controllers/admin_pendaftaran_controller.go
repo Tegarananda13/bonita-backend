@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"bonita-backend/config"
+	"bonita-backend/helpers"
 	"bonita-backend/models"
 	"net/http"
 
@@ -187,5 +188,43 @@ func AssignPendaftaran(c *gin.Context) {
 			"pendaftaran_id": pendaftaran.ID,
 			"admin_id":       userID,
 		},
+	})
+}
+
+// TandaiSelesai — PUT /pic/pendaftaran/:id/selesai
+// Menandai jamaah yang sudah selesai melaksanakan umroh (pulang)
+func TandaiSelesai(c *gin.Context) {
+	pendaftaranID := c.Param("id")
+
+	var pendaftaran models.Pendaftaran
+
+	if err := config.DB.
+		First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Pendaftaran tidak ditemukan",
+		})
+		return
+	}
+
+	// Hanya bisa tandai selesai jika status saat ini adalah siap_berangkat
+	if pendaftaran.Status != helpers.StatusSiapBerangkat {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Hanya jamaah dengan status 'Siap Berangkat' yang dapat ditandai selesai",
+		})
+		return
+	}
+
+	// Update status menjadi selesai
+	if err := config.DB.
+		Model(&pendaftaran).
+		Update("status", helpers.StatusSelesai).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Gagal menandai jamaah selesai",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Jamaah berhasil ditandai selesai.",
 	})
 }

@@ -18,4 +18,5 @@ const (
 	StatusMenungguDokumen    = "menunggu_dokumen"
 	StatusMenungguPembayaran = "menunggu_pembayaran"
 	StatusSiapBerangkat      = "siap_berangkat"
+	StatusSelesai            = "selesai"
 )
