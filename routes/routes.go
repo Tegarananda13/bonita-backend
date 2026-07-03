@@ -113,6 +113,17 @@ func SetupRoutes(r *gin.Engine) {
 			controllers.GetDashboard,
 		)
 
+		// ── Customer (admin mendaftarkan jamaah) ──
+		admin.GET(
+			"/customer",
+			controllers.AdminGetAllCustomer,
+		)
+
+		admin.POST(
+			"/customer",
+			controllers.AdminCreateCustomer,
+		)
+
 		admin.GET(
 			"/pendaftaran",
 			controllers.GetAllPendaftaran,
