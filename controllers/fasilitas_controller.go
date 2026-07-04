@@ -37,7 +37,7 @@ func CreateFasilitas(c *gin.Context) {
 
 	var req struct {
 		NamaFasilitas string `json:"nama_fasilitas" binding:"required"`
-		Deskripsi string `json:"deskripsi" binding:"required"`
+		Deskripsi     string `json:"deskripsi"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
