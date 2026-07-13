@@ -20,7 +20,15 @@ func CreatePaket(c *gin.Context) {
 	// =========================
 
 	namaPaket := c.PostForm("nama_paket")
+	jenisPaket := c.PostForm("jenis_paket")
 	deskripsi := c.PostForm("deskripsi")
+
+	if jenisPaket == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Jenis paket wajib dipilih",
+		})
+		return
+	}
 
 	harga, err := strconv.ParseFloat(
 		c.PostForm("harga"),
@@ -148,6 +156,7 @@ func CreatePaket(c *gin.Context) {
 
 	paket := models.PaketUmroh{
 		NamaPaket:        namaPaket,
+		JenisPaket:       jenisPaket,
 		FotoPaket:        fotoURL,
 		Harga:            harga,
 		TanggalBerangkat: tanggalBerangkat,
@@ -179,6 +188,7 @@ func CreatePaket(c *gin.Context) {
     "data": gin.H{
         "id": paket.ID,
         "nama_paket": paket.NamaPaket,
+        "jenis_paket": paket.JenisPaket,
         "foto_paket": paket.FotoPaket,
         "harga": paket.Harga,
         "tanggal_berangkat": paket.TanggalBerangkat,
@@ -256,6 +266,7 @@ func UpdatePaket(c *gin.Context) {
 	// =========================
 
 	namaPaket := c.PostForm("nama_paket")
+	jenisPaket := c.PostForm("jenis_paket")
 	deskripsi := c.PostForm("deskripsi")
 
 	harga, err := strconv.ParseFloat(
@@ -397,6 +408,9 @@ func UpdatePaket(c *gin.Context) {
 	// =========================
 
 	paket.NamaPaket = namaPaket
+	if jenisPaket != "" {
+		paket.JenisPaket = jenisPaket
+	}
 	paket.Harga = harga
 	paket.TanggalBerangkat = tanggalBerangkat
 	paket.Durasi = durasi
@@ -420,6 +434,7 @@ func UpdatePaket(c *gin.Context) {
     "data": gin.H{
         "id": paket.ID,
         "nama_paket": paket.NamaPaket,
+        "jenis_paket": paket.JenisPaket,
         "foto_paket": paket.FotoPaket,
         "harga": paket.Harga,
         "tanggal_berangkat": paket.TanggalBerangkat,

@@ -32,6 +32,7 @@ func GetPaket(c *gin.Context) {
 		result = append(result, gin.H{
 		"id":                 paket.ID,
 		"nama_paket":         paket.NamaPaket,
+		"jenis_paket":        paket.JenisPaket,
 		"foto_paket":         paket.FotoPaket,
 		"harga":              paket.Harga,
 		"durasi":             paket.Durasi,
@@ -79,6 +80,7 @@ func GetDetailPaket(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"id": paket.ID,
 		"nama_paket": paket.NamaPaket,
+		"jenis_paket": paket.JenisPaket,
 		"foto_paket": paket.FotoPaket,
 		"deskripsi": paket.Deskripsi,
 		"harga": paket.Harga,
