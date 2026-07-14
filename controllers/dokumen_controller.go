@@ -12,6 +12,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// minDP adalah jumlah minimum pembayaran DP yang harus sudah diterima
+// sebelum customer diperbolehkan mengunggah dokumen.
+const minDP float64 = 5_000_000
+
 func UploadDokumen(c *gin.Context) {
 
 	// ambil jenis dokumen
@@ -37,6 +41,32 @@ func UploadDokumen(c *gin.Context) {
 		})
 		return
 	}
+
+	// ── Validasi DP ───────────────────────────────────────────────────────────
+	// Customer hanya boleh upload dokumen setelah ada minimal satu pembayaran
+	// dengan status "diterima" dan jumlah >= Rp5.000.000.
+	var pembayaran []models.Pembayaran
+
+	config.DB.
+		Where("pendaftaran_id = ?", pendaftaran.ID).
+		Order("tanggal_bayar ASC").
+		Find(&pembayaran)
+
+	dpDiterima := false
+	for _, p := range pembayaran {
+		if p.Status == helpers.PaymentVerificationDiterima && p.Jumlah >= minDP {
+			dpDiterima = true
+			break
+		}
+	}
+
+	if !dpDiterima {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "Dokumen hanya dapat diunggah setelah pembayaran DP pertama diterima oleh admin.",
+		})
+		return
+	}
+	// ─────────────────────────────────────────────────────────────────────────
 
 	// ambil file
 	fileHeader, err := c.FormFile("file")
@@ -108,7 +138,6 @@ func UploadDokumen(c *gin.Context) {
 		},
 	})
 }
-
 
 func GetDokumen(c *gin.Context) {
 

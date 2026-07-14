@@ -16,7 +16,7 @@ func GenerateNomorInvoice(db *gorm.DB) (string, error) {
 	// Hitung berapa pendaftaran yang sudah punya invoice di tahun ini
 	var count int64
 	db.Model(&struct{ NomorInvoice string }{}).
-		Table("pendaftarans").
+		Table("pendaftaran").
 		Where("nomor_invoice LIKE ?", fmt.Sprintf("INV-BNT-%d-%%", year)).
 		Count(&count)
 
