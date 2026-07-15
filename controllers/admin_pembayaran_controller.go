@@ -51,15 +51,17 @@ func VerifikasiPembayaran(c *gin.Context) {
 		return
 	}
 
-	// update status pembayaran
-	pembayaran.Status = req.Status
-
-	if err := config.DB.Save(&pembayaran).Error; err != nil {
+	// update status pembayaran — gunakan Model().Update() agar tidak trigger
+	// cascade upsert ke association Pendaftaran → PaketUmroh
+	if err := config.DB.
+		Model(&pembayaran).
+		Update("status", req.Status).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Gagal update status pembayaran",
 		})
 		return
 	}
+	pembayaran.Status = req.Status
 
 	// 🔥 UPDATE STATUS PENDAFTARAN
 	if pembayaran.Status == helpers.PaymentVerificationDiterima {
@@ -94,8 +96,12 @@ func VerifikasiPembayaran(c *gin.Context) {
 			pendaftaran.PaymentStatus = "DP"
 		}
 
-		config.DB.Model(&pendaftaran).
-		Update("payment_status", pendaftaran.PaymentStatus)
+		// Gunakan empty struct + WHERE agar GORM tidak melakukan cascade
+		// upsert ke Paket melalui association Pendaftaran.
+		config.DB.
+			Model(&models.Pendaftaran{}).
+			Where("id = ?", pendaftaran.ID).
+			Update("payment_status", pendaftaran.PaymentStatus)
 
 		// 🔥 update status utama otomatis
 		helpers.UpdateStatusPendaftaran(pendaftaran.ID)

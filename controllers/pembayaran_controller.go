@@ -95,7 +95,12 @@ func CreatePembayaran(c *gin.Context) {
 	if pendaftaran.NomorInvoice == "" {
 		nomorInvoice, err := helpers.GenerateNomorInvoice(config.DB)
 		if err == nil {
-			config.DB.Model(&pendaftaran).Update("nomor_invoice", nomorInvoice)
+			// Gunakan empty struct + WHERE agar GORM tidak membawa association
+			// pendaftaran.Paket (yang sudah di-Preload) ke cascade upsert.
+			config.DB.
+				Model(&models.Pendaftaran{}).
+				Where("id = ?", pendaftaran.ID).
+				Update("nomor_invoice", nomorInvoice)
 			pendaftaran.NomorInvoice = nomorInvoice
 		}
 	}

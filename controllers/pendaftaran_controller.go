@@ -128,8 +128,11 @@ func CreatePendaftaran(c *gin.Context) {
 	// =========================
 	paket.KuotaTerpakai += 1
 
+	// Gunakan Model().Update() agar tidak trigger cascade upsert
+	// ke association Fasilitas pada PaketUmroh
 	if err := config.DB.
-		Save(&paket).Error; err != nil {
+		Model(&paket).
+		Update("kuota_terpakai", paket.KuotaTerpakai).Error; err != nil {
 
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Gagal update kuota paket",

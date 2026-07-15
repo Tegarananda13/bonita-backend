@@ -129,10 +129,12 @@ func VerifikasiDokumen(c *gin.Context) {
 	if err := config.DB.
 		First(&pendaftaran, "id = ?", dokumen.PendaftaranID).Error; err == nil {
 
-		pendaftaran.DocumentStatus = documentStatus
-
-		config.DB.Model(&pendaftaran).
-			Update("document_status", pendaftaran.DocumentStatus)
+		// Gunakan empty struct + WHERE agar GORM tidak melakukan cascade
+		// upsert ke Paket melalui association Pendaftaran.
+		config.DB.
+			Model(&models.Pendaftaran{}).
+			Where("id = ?", pendaftaran.ID).
+			Update("document_status", documentStatus)
 
 			helpers.UpdateStatusPendaftaran(pendaftaran.ID)
 	}
