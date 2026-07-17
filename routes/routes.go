@@ -219,6 +219,11 @@ func SetupRoutes(r *gin.Engine) {
 			controllers.GetPaketByID,
 		)
 
+		admin.GET(
+			"/paket/:id/detail",
+			controllers.GetDetailPaketAdmin,
+		)
+
 		admin.DELETE(
 			"/paket/:id",
 			controllers.DeletePaket,

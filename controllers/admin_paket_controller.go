@@ -482,3 +482,118 @@ func DeletePaket(c *gin.Context) {
 		"message": "Paket berhasil dihapus",
 	})
 }
+
+// GetDetailPaketAdmin mengembalikan informasi lengkap sebuah paket
+// beserta statistik dan daftar seluruh jamaah yang mengambil paket tersebut.
+// Endpoint: GET /admin/paket/:id/detail
+func GetDetailPaketAdmin(c *gin.Context) {
+
+	id := c.Param("id")
+
+	// ── Ambil paket + fasilitas ─────────────────────────────────────────────
+	var paket models.PaketUmroh
+
+	if err := config.DB.
+		Preload("Fasilitas").
+		First(&paket, "id = ?", id).Error; err != nil {
+
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Paket tidak ditemukan",
+		})
+		return
+	}
+
+	// ── Ambil daftar pendaftaran + relasi ───────────────────────────────────
+	var pendaftaranList []models.Pendaftaran
+
+	config.DB.
+		Preload("Customer").
+		Preload("User").
+		Where("paket_id = ?", paket.ID).
+		Order("tanggal_daftar DESC").
+		Find(&pendaftaranList)
+
+	// ── Hitung statistik ────────────────────────────────────────────────────
+	totalJamaah := len(pendaftaranList)
+	var jumlahDP, jumlahLunas, jumlahSiapBerangkat, jumlahSelesai, jumlahBatal int
+
+	for _, p := range pendaftaranList {
+		switch p.Status {
+		case helpers.StatusProses:
+			if p.PaymentStatus == "DP" {
+				jumlahDP++
+			}
+		case helpers.StatusMenungguDokumen, helpers.StatusMenungguPembayaran:
+			if p.PaymentStatus == helpers.PaymentLunas {
+				jumlahLunas++
+			} else {
+				jumlahDP++
+			}
+		case helpers.StatusSiapBerangkat:
+			jumlahSiapBerangkat++
+		case helpers.StatusSelesai:
+			jumlahSelesai++
+		}
+		if p.Status == "batal" {
+			jumlahBatal++
+		}
+	}
+
+	// ── Format daftar jamaah ────────────────────────────────────────────────
+	var jamaahList []gin.H
+
+	for _, p := range pendaftaranList {
+
+		picNama := "-"
+		if p.UserID != nil {
+			picNama = p.User.Nama
+		}
+
+		jamaahList = append(jamaahList, gin.H{
+			"id":                p.ID,
+			"nomor_pendaftaran": p.NomorPendaftaran,
+			"nama_customer":     p.Customer.Nama,
+			"pic":               picNama,
+			"status":            p.Status,
+			"payment_status":    p.PaymentStatus,
+			"document_status":   p.DocumentStatus,
+			"tanggal_daftar":    p.TanggalDaftar,
+		})
+	}
+
+	// ── Sisa kuota ──────────────────────────────────────────────────────────
+	sisaKuota := paket.KuotaMax - paket.KuotaTerpakai
+	if sisaKuota < 0 {
+		sisaKuota = 0
+	}
+
+	isAktif := paket.TanggalBerangkat.After(time.Now())
+
+	// ── Response ────────────────────────────────────────────────────────────
+	c.JSON(http.StatusOK, gin.H{
+		"paket": gin.H{
+			"id":                paket.ID,
+			"nama_paket":        paket.NamaPaket,
+			"jenis_paket":       paket.JenisPaket,
+			"foto_paket":        paket.FotoPaket,
+			"harga":             paket.Harga,
+			"durasi":            paket.Durasi,
+			"tanggal_berangkat": paket.TanggalBerangkat,
+			"deskripsi":         paket.Deskripsi,
+			"kuota_max":         paket.KuotaMax,
+			"kuota_terpakai":    paket.KuotaTerpakai,
+			"sisa_kuota":        sisaKuota,
+			"jumlah_fasilitas":  len(paket.Fasilitas),
+			"is_aktif":          isAktif,
+		},
+		"statistik": gin.H{
+			"total_jamaah":       totalJamaah,
+			"jumlah_dp":          jumlahDP,
+			"jumlah_lunas":       jumlahLunas,
+			"jumlah_siap_berangkat": jumlahSiapBerangkat,
+			"jumlah_selesai":     jumlahSelesai,
+			"jumlah_batal":       jumlahBatal,
+		},
+		"jamaah": jamaahList,
+	})
+}
