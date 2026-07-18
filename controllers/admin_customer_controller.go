@@ -15,11 +15,15 @@ import (
 
 // AdminCreateCustomerRequest — payload POST /admin/customer
 type AdminCreateCustomerRequest struct {
-	// Data Customer
-	Nama   string `json:"nama"    binding:"required"`
-	NoHP   string `json:"no_hp"   binding:"required"`
-	Email  string `json:"email"   binding:"required"`
-	Alamat string `json:"alamat"`
+	// Data Identitas Customer
+	NIK          string `json:"nik"           binding:"required"`
+	Nama         string `json:"nama"          binding:"required"`
+	TempatLahir  string `json:"tempat_lahir"  binding:"required"`
+	TanggalLahir string `json:"tanggal_lahir" binding:"required"` // YYYY-MM-DD
+	JenisKelamin string `json:"jenis_kelamin" binding:"required"`
+	NoHP         string `json:"no_hp"         binding:"required"`
+	Email        string `json:"email"         binding:"required"`
+	Alamat       string `json:"alamat"        binding:"required"`
 
 	// Data Pendaftaran
 	PaketID string `json:"paket_id" binding:"required"`
@@ -34,20 +38,56 @@ func AdminCreateCustomer(c *gin.Context) {
 	var req AdminCreateCustomerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Data tidak lengkap. Nama, No. HP, Email, dan Paket wajib diisi.",
+			"error": "Data tidak lengkap. Semua field wajib diisi.",
 		})
 		return
 	}
 
 	// Trim whitespace
-	req.Nama  = strings.TrimSpace(req.Nama)
-	req.NoHP  = strings.TrimSpace(req.NoHP)
-	req.Email = strings.TrimSpace(req.Email)
+	req.NIK          = strings.TrimSpace(req.NIK)
+	req.Nama         = strings.TrimSpace(req.Nama)
+	req.TempatLahir  = strings.TrimSpace(req.TempatLahir)
+	req.JenisKelamin = strings.TrimSpace(req.JenisKelamin)
+	req.NoHP         = strings.TrimSpace(req.NoHP)
+	req.Email        = strings.TrimSpace(req.Email)
+	req.Alamat       = strings.TrimSpace(req.Alamat)
 
-	if req.Nama == "" || req.NoHP == "" || req.Email == "" {
+	if req.NIK == "" || req.Nama == "" || req.TempatLahir == "" ||
+		req.TanggalLahir == "" || req.JenisKelamin == "" ||
+		req.NoHP == "" || req.Email == "" || req.Alamat == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Nama, No. HP, dan Email tidak boleh kosong.",
+			"error": "Semua field wajib diisi.",
 		})
+		return
+	}
+
+	// validasi NIK 16 digit angka
+	if len(req.NIK) != 16 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "NIK harus terdiri dari 16 digit"})
+		return
+	}
+	for _, ch := range req.NIK {
+		if ch < '0' || ch > '9' {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "NIK hanya boleh berisi angka"})
+			return
+		}
+	}
+
+	// cek NIK sudah terdaftar
+	var existingCustomer models.Customer
+	if err := config.DB.Where("nik = ?", req.NIK).First(&existingCustomer).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "NIK sudah terdaftar dalam sistem"})
+		return
+	}
+
+	// parse tanggal lahir
+	tanggalLahir, err := time.Parse("2006-01-02", req.TanggalLahir)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format tanggal lahir tidak valid (gunakan YYYY-MM-DD)"})
+		return
+	}
+	if tanggalLahir.After(time.Now()) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tanggal lahir tidak boleh melebihi tanggal hari ini"})
 		return
 	}
 
@@ -85,11 +125,15 @@ func AdminCreateCustomer(c *gin.Context) {
 
 	// ── 5. Buat Customer ──────────────────────────────────────────────────────
 	customer := models.Customer{
-		Nama:      req.Nama,
-		NoHP:      req.NoHP,
-		Email:     req.Email,
-		Alamat:    req.Alamat,
-		CreatedAt: time.Now(),
+		NIK:          req.NIK,
+		Nama:         req.Nama,
+		TempatLahir:  req.TempatLahir,
+		TanggalLahir: tanggalLahir,
+		JenisKelamin: req.JenisKelamin,
+		NoHP:         req.NoHP,
+		Email:        req.Email,
+		Alamat:       req.Alamat,
+		CreatedAt:    time.Now(),
 	}
 
 	if err := config.DB.Create(&customer).Error; err != nil {
@@ -184,8 +228,12 @@ func AdminGetAllCustomer(c *gin.Context) {
 			"id":               p.ID,
 			"nomor_pendaftaran": p.NomorPendaftaran,
 			"nama_customer":    p.Customer.Nama,
+			"nik":              p.Customer.NIK,
 			"no_hp":            p.Customer.NoHP,
 			"email":            p.Customer.Email,
+			"tempat_lahir":     p.Customer.TempatLahir,
+			"tanggal_lahir":    p.Customer.TanggalLahir,
+			"jenis_kelamin":    p.Customer.JenisKelamin,
 			"paket":            p.Paket.NamaPaket,
 			"payment_status":   p.PaymentStatus,
 			"document_status":  p.DocumentStatus,
