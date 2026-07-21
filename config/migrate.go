@@ -15,6 +15,7 @@ func Migrate() {
 		&models.ChatbotLog{},
 		&models.CustomerSession{},
 		&models.DetailFasilitas{},
+		&models.Pengaduan{},
 	)
 
 	// Step 2: Isi kolom NIK yang kosong dengan nilai placeholder unik
@@ -23,5 +24,14 @@ func Migrate() {
 		UPDATE customer
 		SET nik = 'OLD-' || LEFT(REPLACE(gen_random_uuid()::text, '-', ''), 12)
 		WHERE nik IS NULL OR nik = ''
+	`)
+
+	// Step 3: Salin data alamat lama ke alamat_lengkap
+	// agar data customer yang sudah ada tidak hilang setelah migration
+	DB.Exec(`
+		UPDATE customer
+		SET alamat_lengkap = alamat
+		WHERE (alamat_lengkap IS NULL OR alamat_lengkap = '')
+		  AND alamat IS NOT NULL AND alamat != ''
 	`)
 }

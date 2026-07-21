@@ -19,4 +19,9 @@ const (
 	StatusMenungguPembayaran = "menunggu_pembayaran"
 	StatusSiapBerangkat      = "siap_berangkat"
 	StatusSelesai            = "selesai"
+
+	// Pengaduan
+	PengaduanMenunggu  = "menunggu"
+	PengaduanDiproses  = "diproses"
+	PengaduanSelesai   = "selesai"
 )

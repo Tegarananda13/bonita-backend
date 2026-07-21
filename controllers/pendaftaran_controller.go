@@ -14,15 +14,20 @@ import (
 )
 
 type CreatePendaftaranRequest struct {
-	NIK          string `json:"nik"            binding:"required"`
-	Nama         string `json:"nama"           binding:"required"`
-	TempatLahir  string `json:"tempat_lahir"   binding:"required"`
-	TanggalLahir string `json:"tanggal_lahir"  binding:"required"` // format: YYYY-MM-DD
-	JenisKelamin string `json:"jenis_kelamin"  binding:"required"`
-	NoHP         string `json:"no_hp"          binding:"required"`
-	Email        string `json:"email"          binding:"required"`
-	Alamat       string `json:"alamat"         binding:"required"`
-	PaketID      string `json:"paket_id"       binding:"required"`
+	NIK           string `json:"nik"            binding:"required"`
+	Nama          string `json:"nama"           binding:"required"`
+	TempatLahir   string `json:"tempat_lahir"   binding:"required"`
+	TanggalLahir  string `json:"tanggal_lahir"  binding:"required"` // format: YYYY-MM-DD
+	JenisKelamin  string `json:"jenis_kelamin"  binding:"required"`
+	NoHP          string `json:"no_hp"          binding:"required"`
+	Email         string `json:"email"          binding:"required"`
+	AlamatLengkap string `json:"alamat_lengkap" binding:"required"`
+	Provinsi      string `json:"provinsi"       binding:"required"`
+	KabupatenKota string `json:"kabupaten_kota" binding:"required"`
+	Kecamatan     string `json:"kecamatan"      binding:"required"`
+	KelurahanDesa string `json:"kelurahan_desa" binding:"required"`
+	KodePos       string `json:"kode_pos"       binding:"required"`
+	PaketID       string `json:"paket_id"       binding:"required"`
 }
 
 func CreatePendaftaran(c *gin.Context) {
@@ -37,13 +42,18 @@ func CreatePendaftaran(c *gin.Context) {
 	}
 
 	// Trim whitespace
-	req.NIK          = strings.TrimSpace(req.NIK)
-	req.Nama         = strings.TrimSpace(req.Nama)
-	req.TempatLahir  = strings.TrimSpace(req.TempatLahir)
-	req.JenisKelamin = strings.TrimSpace(req.JenisKelamin)
-	req.NoHP         = strings.TrimSpace(req.NoHP)
-	req.Email        = strings.TrimSpace(req.Email)
-	req.Alamat       = strings.TrimSpace(req.Alamat)
+	req.NIK           = strings.TrimSpace(req.NIK)
+	req.Nama          = strings.TrimSpace(req.Nama)
+	req.TempatLahir   = strings.TrimSpace(req.TempatLahir)
+	req.JenisKelamin  = strings.TrimSpace(req.JenisKelamin)
+	req.NoHP          = strings.TrimSpace(req.NoHP)
+	req.Email         = strings.TrimSpace(req.Email)
+	req.AlamatLengkap = strings.TrimSpace(req.AlamatLengkap)
+	req.Provinsi      = strings.TrimSpace(req.Provinsi)
+	req.KabupatenKota = strings.TrimSpace(req.KabupatenKota)
+	req.Kecamatan     = strings.TrimSpace(req.Kecamatan)
+	req.KelurahanDesa = strings.TrimSpace(req.KelurahanDesa)
+	req.KodePos       = strings.TrimSpace(req.KodePos)
 
 	// validasi NIK 16 digit angka
 	if len(req.NIK) != 16 {
@@ -126,15 +136,20 @@ func CreatePendaftaran(c *gin.Context) {
 
 	// buat customer baru
 	customer := models.Customer{
-		NIK:          req.NIK,
-		Nama:         req.Nama,
-		TempatLahir:  req.TempatLahir,
-		TanggalLahir: tanggalLahir,
-		JenisKelamin: req.JenisKelamin,
-		NoHP:         req.NoHP,
-		Email:        req.Email,
-		Alamat:       req.Alamat,
-		CreatedAt:    time.Now(),
+		NIK:           req.NIK,
+		Nama:          req.Nama,
+		TempatLahir:   req.TempatLahir,
+		TanggalLahir:  tanggalLahir,
+		JenisKelamin:  req.JenisKelamin,
+		NoHP:          req.NoHP,
+		Email:         req.Email,
+		AlamatLengkap: req.AlamatLengkap,
+		Provinsi:      req.Provinsi,
+		KabupatenKota: req.KabupatenKota,
+		Kecamatan:     req.Kecamatan,
+		KelurahanDesa: req.KelurahanDesa,
+		KodePos:       req.KodePos,
+		CreatedAt:     time.Now(),
 	}
 
 	if err := config.DB.

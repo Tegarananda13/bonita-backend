@@ -229,6 +229,11 @@ func SetupRoutes(r *gin.Engine) {
 			controllers.DeletePaket,
 		)
 
+		// ── Pengaduan ──
+		admin.GET("/pengaduan", controllers.GetAllPengaduan)
+		admin.GET("/pengaduan/:id", controllers.GetDetailPengaduan)
+		admin.PATCH("/pengaduan/:id/status", controllers.UpdateStatusPengaduan)
+
 	}
 
 	// ======================
