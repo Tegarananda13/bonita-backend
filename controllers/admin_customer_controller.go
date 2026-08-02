@@ -163,10 +163,18 @@ func AdminCreateCustomer(c *gin.Context) {
 	// ── 6. Generate nomor pendaftaran ─────────────────────────────────────────
 	nomorPendaftaran := "UMR-" + time.Now().Format("20060102150405")
 
-	// ── 7. Generate nomor invoice (langsung saat admin daftarkan) ─────────────
-	nomorInvoice, err := helpers.GenerateNomorInvoice(config.DB)
-	if err != nil {
-		nomorInvoice = "" // fallback — tidak wajib ada saat dibuat
+	// ── 7. Buat Invoice (dibuat saat pendaftaran, bukan saat bayar pertama) ───
+	nomorInvoice, _ := helpers.GenerateNomorInvoice(config.DB)
+	invoice := models.Invoice{
+		NomorInvoice:     nomorInvoice,
+		TotalOrang:       1,
+		TotalTagihan:     paket.Harga, // 1 orang × harga paket
+		TotalPembayaran:  0,
+		StatusPembayaran: models.InvoiceStatusBelumBayar,
+	}
+	if err := config.DB.Create(&invoice).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membuat invoice"})
+		return
 	}
 
 	// ── 8. Buat Pendaftaran ───────────────────────────────────────────────────
@@ -174,9 +182,8 @@ func AdminCreateCustomer(c *gin.Context) {
 		CustomerID:       customer.ID,
 		PaketID:          paketID,
 		UserID:           &adminID, // otomatis di-assign ke admin yang login
+		InvoiceID:        &invoice.ID,
 		NomorPendaftaran: nomorPendaftaran,
-		NomorInvoice:     nomorInvoice,
-		PaymentStatus:    helpers.PaymentBelum,
 		DocumentStatus:   helpers.DocumentBelum,
 		Status:           helpers.StatusProses,
 		TanggalDaftar:    time.Now(),
@@ -212,7 +219,7 @@ func AdminCreateCustomer(c *gin.Context) {
 			"nomor_invoice":    nomorInvoice,
 			"paket":            paket.NamaPaket,
 			"harga":            paket.Harga,
-			"payment_status":   pendaftaran.PaymentStatus,
+			"payment_status":   invoice.StatusPembayaran,
 			"document_status":  pendaftaran.DocumentStatus,
 			"status":           pendaftaran.Status,
 			"tanggal_daftar":   pendaftaran.TanggalDaftar,
@@ -231,6 +238,7 @@ func AdminGetAllCustomer(c *gin.Context) {
 		Preload("Customer").
 		Preload("Paket").
 		Preload("User").
+		Preload("Invoice").
 		Order("tanggal_daftar DESC").
 		Find(&pendaftarans).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -252,7 +260,7 @@ func AdminGetAllCustomer(c *gin.Context) {
 			"tanggal_lahir":    p.Customer.TanggalLahir,
 			"jenis_kelamin":    p.Customer.JenisKelamin,
 			"paket":            p.Paket.NamaPaket,
-			"payment_status":   p.PaymentStatus,
+			"payment_status":   paymentStatusFromPendaftaran(p),
 			"document_status":  p.DocumentStatus,
 			"status":           p.Status,
 			"tanggal_daftar":   p.TanggalDaftar,

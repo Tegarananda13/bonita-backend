@@ -9,14 +9,14 @@ import (
 
 type Pembayaran struct {
 	ID              uuid.UUID `gorm:"type:uuid;primaryKey"`
-	PendaftaranID   uuid.UUID
+	InvoiceID       uuid.UUID // FK ke Invoice
 	Jumlah          float64
 	TanggalBayar    time.Time
 	BuktiPembayaran string
 	Status          string
 
 	// Relasi
-	Pendaftaran Pendaftaran `json:"-"`
+	Invoice Invoice `gorm:"foreignKey:InvoiceID" json:"-"`
 }
 
 func (p *Pembayaran) BeforeCreate(tx *gorm.DB) (err error) {

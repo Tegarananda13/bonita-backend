@@ -509,6 +509,7 @@ func GetDetailPaketAdmin(c *gin.Context) {
 	config.DB.
 		Preload("Customer").
 		Preload("User").
+		Preload("Invoice").
 		Where("paket_id = ?", paket.ID).
 		Order("tanggal_daftar DESC").
 		Find(&pendaftaranList)
@@ -518,13 +519,14 @@ func GetDetailPaketAdmin(c *gin.Context) {
 	var jumlahDP, jumlahLunas, jumlahSiapBerangkat, jumlahSelesai, jumlahBatal int
 
 	for _, p := range pendaftaranList {
+		payStatus := paymentStatusFromPendaftaran(p)
 		switch p.Status {
 		case helpers.StatusProses:
-			if p.PaymentStatus == "DP" {
+			if payStatus == models.InvoiceStatusDP {
 				jumlahDP++
 			}
 		case helpers.StatusMenungguDokumen, helpers.StatusMenungguPembayaran:
-			if p.PaymentStatus == helpers.PaymentLunas {
+			if payStatus == models.InvoiceStatusLunas {
 				jumlahLunas++
 			} else {
 				jumlahDP++
@@ -555,7 +557,7 @@ func GetDetailPaketAdmin(c *gin.Context) {
 			"nama_customer":     p.Customer.Nama,
 			"pic":               picNama,
 			"status":            p.Status,
-			"payment_status":    p.PaymentStatus,
+			"payment_status":    paymentStatusFromPendaftaran(p),
 			"document_status":   p.DocumentStatus,
 			"tanggal_daftar":    p.TanggalDaftar,
 		})

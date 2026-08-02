@@ -74,15 +74,18 @@ func GetDetailPengaduan(c *gin.Context) {
 		Preload("Pendaftaran").
 		Preload("Pendaftaran.Customer").
 		Preload("Pendaftaran.Paket").
+		Preload("Pendaftaran.Invoice").
 		First(&pengaduan, "pengaduan.id = ?", id).Error; err != nil {
 
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pengaduan tidak ditemukan"})
 		return
 	}
 
-	// Ambil data pembayaran & dokumen terkait pendaftaran
+	// Ambil data pembayaran terkait invoice pendaftaran
 	var pembayaran []models.Pembayaran
-	config.DB.Where("pendaftaran_id = ?", pengaduan.PendaftaranID).Find(&pembayaran)
+	if pengaduan.Pendaftaran.InvoiceID != nil {
+		config.DB.Where("invoice_id = ?", pengaduan.Pendaftaran.InvoiceID).Find(&pembayaran)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":     pengaduan.ID,
@@ -103,7 +106,7 @@ func GetDetailPengaduan(c *gin.Context) {
 			"nomor_pendaftaran": pengaduan.Pendaftaran.NomorPendaftaran,
 			"paket":             pengaduan.Pendaftaran.Paket.NamaPaket,
 			"tanggal_berangkat": pengaduan.Pendaftaran.Paket.TanggalBerangkat,
-			"payment_status":    pengaduan.Pendaftaran.PaymentStatus,
+			"payment_status":    paymentStatusFromPendaftaran(pengaduan.Pendaftaran),
 			"document_status":   pengaduan.Pendaftaran.DocumentStatus,
 			"status":            pengaduan.Pendaftaran.Status,
 		},

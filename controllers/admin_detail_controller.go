@@ -17,40 +17,20 @@ import (
 // helpers internal
 // ─────────────────────────────────────────────────────────────────────────────
 
-// recalcPaymentStatus menghitung ulang payment_status dari total pembayaran
-// yang sudah diterima, lalu update DB dan trigger status utama pendaftaran.
+// recalcPaymentStatus recalc Invoice.StatusPembayaran berdasarkan pendaftaran_id.
+// Dipakai oleh admin_detail_controller yang masih menerima pendaftaran_id.
 func recalcPaymentStatus(pendaftaranID uuid.UUID) {
 	var pendaftaran models.Pendaftaran
-	if err := config.DB.Preload("Paket").First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+	if err := config.DB.First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
 		return
 	}
-
-	var total float64
-	config.DB.
-		Model(&models.Pembayaran{}).
-		Where("pendaftaran_id = ? AND status = ?", pendaftaranID, helpers.PaymentVerificationDiterima).
-		Select("COALESCE(SUM(jumlah),0)").
-		Scan(&total)
-
-	var newStatus string
-	if total <= 0 {
-		newStatus = helpers.PaymentBelum
-	} else if total >= pendaftaran.Paket.Harga {
-		newStatus = helpers.PaymentLunas
-	} else {
-		newStatus = helpers.PaymentDP
+	if pendaftaran.InvoiceID == nil {
+		return
 	}
-
-	config.DB.
-		Model(&models.Pendaftaran{}).
-		Where("id = ?", pendaftaranID).
-		Update("payment_status", newStatus)
-
-	helpers.UpdateStatusPendaftaran(pendaftaranID)
+	recalcInvoiceStatus(pendaftaran.InvoiceID)
 }
 
-// recalcDocumentStatus menghitung ulang document_status dari seluruh dokumen,
-// lalu update DB dan trigger status utama pendaftaran.
+// recalcDocumentStatus menghitung ulang document_status dari seluruh dokumen.
 func recalcDocumentStatus(pendaftaranID uuid.UUID) {
 	requiredDocs := []string{"paspor", "ktp", "foto"}
 
@@ -111,10 +91,20 @@ func AdminCreatePembayaran(c *gin.Context) {
 	}
 
 	var pendaftaran models.Pendaftaran
-	if err := config.DB.Preload("Paket").First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+	if err := config.DB.
+		Preload("Paket").
+		Preload("Invoice").
+		First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
 		return
 	}
+
+	if pendaftaran.InvoiceID == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invoice untuk pendaftaran ini belum tersedia"})
+		return
+	}
+
+	invoice := pendaftaran.Invoice
 
 	jumlahStr := c.PostForm("jumlah")
 	tanggalStr := c.PostForm("tanggal_bayar")
@@ -135,7 +125,7 @@ func AdminCreatePembayaran(c *gin.Context) {
 	var totalDiterima float64
 	config.DB.
 		Model(&models.Pembayaran{}).
-		Where("pendaftaran_id = ? AND status = ?", pendaftaranID, helpers.PaymentVerificationDiterima).
+		Where("invoice_id = ? AND status = ?", invoice.ID, helpers.PaymentVerificationDiterima).
 		Select("COALESCE(SUM(jumlah),0)").
 		Scan(&totalDiterima)
 
@@ -144,16 +134,16 @@ func AdminCreatePembayaran(c *gin.Context) {
 		return
 	}
 
-	if totalDiterima+jumlah > pendaftaran.Paket.Harga {
+	if totalDiterima+jumlah > invoice.TotalTagihan {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Pembayaran melebihi total harga paket"})
 		return
 	}
 
 	pembayaran := models.Pembayaran{
-		PendaftaranID: pendaftaranID,
-		Jumlah:        jumlah,
-		TanggalBayar:  tanggalBayar,
-		Status:        helpers.PaymentVerificationDiterima,
+		InvoiceID:    invoice.ID,
+		Jumlah:       jumlah,
+		TanggalBayar: tanggalBayar,
+		Status:       helpers.PaymentVerificationDiterima,
 	}
 
 	if err := config.DB.Create(&pembayaran).Error; err != nil {
@@ -174,17 +164,7 @@ func AdminCreatePembayaran(c *gin.Context) {
 		}
 	}
 
-	// Generate nomor invoice jika belum ada
-	if pendaftaran.NomorInvoice == "" {
-		if nomorInvoice, err := helpers.GenerateNomorInvoice(config.DB); err == nil {
-			config.DB.
-				Model(&models.Pendaftaran{}).
-				Where("id = ?", pendaftaranID).
-				Update("nomor_invoice", nomorInvoice)
-		}
-	}
-
-	recalcPaymentStatus(pendaftaranID)
+	recalcInvoiceStatus(invoice.ID)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Pembayaran berhasil ditambahkan",
@@ -197,8 +177,7 @@ func AdminCreatePembayaran(c *gin.Context) {
 	})
 }
 
-// AdminUpdatePembayaran — PUT /admin/pembayaran/:id
-// Admin mengedit jumlah, tanggal, dan/atau bukti pembayaran.
+// AdminUpdatePembayaran — PUT /admin/pembayaran/:id/admin
 func AdminUpdatePembayaran(c *gin.Context) {
 	pembayaranIDStr := c.Param("id")
 	pembayaranID, err := uuid.Parse(pembayaranIDStr)
@@ -245,7 +224,7 @@ func AdminUpdatePembayaran(c *gin.Context) {
 		return
 	}
 
-	recalcPaymentStatus(pembayaran.PendaftaranID)
+	recalcInvoiceStatus(pembayaran.InvoiceID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Pembayaran berhasil diupdate",
@@ -258,7 +237,7 @@ func AdminUpdatePembayaran(c *gin.Context) {
 	})
 }
 
-// AdminDeletePembayaran — DELETE /admin/pembayaran/:id
+// AdminDeletePembayaran — DELETE /admin/pembayaran/:id/admin
 func AdminDeletePembayaran(c *gin.Context) {
 	pembayaranIDStr := c.Param("id")
 	pembayaranID, err := uuid.Parse(pembayaranIDStr)
@@ -273,7 +252,7 @@ func AdminDeletePembayaran(c *gin.Context) {
 		return
 	}
 
-	pendaftaranID := pembayaran.PendaftaranID
+	invoiceID := pembayaran.InvoiceID
 	_ = helpers.DeleteFromSupabase(pembayaran.BuktiPembayaran, "pembayaran")
 
 	if err := config.DB.Delete(&pembayaran).Error; err != nil {
@@ -281,7 +260,7 @@ func AdminDeletePembayaran(c *gin.Context) {
 		return
 	}
 
-	recalcPaymentStatus(pendaftaranID)
+	recalcInvoiceStatus(invoiceID)
 	c.JSON(http.StatusOK, gin.H{"message": "Pembayaran berhasil dihapus"})
 }
 
@@ -290,7 +269,6 @@ func AdminDeletePembayaran(c *gin.Context) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // AdminUploadDokumen — POST /admin/pendaftaran/:id/dokumen
-// Admin mengupload dokumen; status otomatis "diterima".
 func AdminUploadDokumen(c *gin.Context) {
 	pendaftaranIDStr := c.Param("id")
 	pendaftaranID, err := uuid.Parse(pendaftaranIDStr)
@@ -357,7 +335,7 @@ func AdminUploadDokumen(c *gin.Context) {
 	})
 }
 
-// AdminUpdateDokumen — PUT /admin/dokumen/:id
+// AdminUpdateDokumen — PUT /admin/dokumen/:id/admin
 func AdminUpdateDokumen(c *gin.Context) {
 	dokumenIDStr := c.Param("id")
 	dokumenID, err := uuid.Parse(dokumenIDStr)
@@ -407,7 +385,7 @@ func AdminUpdateDokumen(c *gin.Context) {
 	})
 }
 
-// AdminDeleteDokumen — DELETE /admin/dokumen/:id
+// AdminDeleteDokumen — DELETE /admin/dokumen/:id/admin
 func AdminDeleteDokumen(c *gin.Context) {
 	dokumenIDStr := c.Param("id")
 	dokumenID, err := uuid.Parse(dokumenIDStr)
