@@ -19,6 +19,8 @@
 		KuotaMax          int
 		KuotaTerpakai     int
 		BatasPendaftaran  int
+		IsActive          bool      `gorm:"default:true"`
+		IsFinished        bool      `gorm:"default:false"`
 		CreatedAt         time.Time
 
 		Fasilitas []DetailFasilitas `gorm:"foreignKey:PaketID"`

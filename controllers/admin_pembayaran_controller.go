@@ -73,7 +73,41 @@ func GetDetailPembayaran(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"pembayaran": pembayaran})
+	// Bangun daftar jamaah dari Invoice.Pendaftaran[]
+	var jamaahList []gin.H
+	var namaPaket string
+	for i, p := range pembayaran.Invoice.Pendaftaran {
+		jamaahList = append(jamaahList, gin.H{
+			"Nama": p.Customer.Nama,
+			"NIK":  p.Customer.NIK,
+		})
+		if i == 0 {
+			namaPaket = p.Paket.NamaPaket
+		}
+	}
+	if jamaahList == nil {
+		jamaahList = []gin.H{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"pembayaran": gin.H{
+			"ID":              pembayaran.ID,
+			"Jumlah":          pembayaran.Jumlah,
+			"TanggalBayar":    pembayaran.TanggalBayar,
+			"BuktiPembayaran": pembayaran.BuktiPembayaran,
+			"Status":          pembayaran.Status,
+			"Invoice": gin.H{
+				"ID":               pembayaran.Invoice.ID,
+				"NomorInvoice":     pembayaran.Invoice.NomorInvoice,
+				"TotalTagihan":     pembayaran.Invoice.TotalTagihan,
+				"TotalPembayaran":  pembayaran.Invoice.TotalPembayaran,
+				"StatusPembayaran": pembayaran.Invoice.StatusPembayaran,
+				"TotalOrang":       pembayaran.Invoice.TotalOrang,
+				"NamaPaket":        namaPaket,
+				"Pendaftaran":      jamaahList,
+			},
+		},
+	})
 }
 
 func GetPendingPembayaran(c *gin.Context) {

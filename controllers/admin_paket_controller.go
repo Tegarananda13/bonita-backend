@@ -599,3 +599,96 @@ func GetDetailPaketAdmin(c *gin.Context) {
 		"jamaah": jamaahList,
 	})
 }
+
+// ToggleStatusPaket — PATCH /admin/paket/:id/status
+// Mengubah status aktif/nonaktif paket.
+// Paket tidak dapat dinonaktifkan jika masih ada jamaah dengan status berjalan.
+func ToggleStatusPaket(c *gin.Context) {
+	id := c.Param("id")
+
+	var paket models.PaketUmroh
+	if err := config.DB.First(&paket, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Paket tidak ditemukan"})
+		return
+	}
+
+	var req struct {
+		IsActive bool `json:"is_active"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format request tidak valid"})
+		return
+	}
+
+	// Jika ingin menonaktifkan, cek apakah masih ada jamaah berjalan
+	if !req.IsActive {
+		statusBerjalan := []string{
+			helpers.StatusProses,
+			helpers.StatusMenungguDokumen,
+			helpers.StatusMenungguPembayaran,
+			helpers.StatusSiapBerangkat,
+		}
+		var count int64
+		config.DB.Model(&models.Pendaftaran{}).
+			Where("paket_id = ? AND status IN ?", paket.ID, statusBerjalan).
+			Count(&count)
+
+		if count > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Paket tidak dapat dinonaktifkan karena masih memiliki jamaah yang sedang diproses.",
+			})
+			return
+		}
+	}
+
+	if err := config.DB.Model(&paket).Update("is_active", req.IsActive).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengubah status paket"})
+		return
+	}
+
+	status := "nonaktif"
+	if req.IsActive {
+		status = "aktif"
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Status paket berhasil diubah menjadi " + status,
+		"is_active": req.IsActive,
+	})
+}
+
+// FinishPaket — PATCH /admin/paket/:id/finish
+// Menandai paket sebagai selesai (IsFinished = true) dan otomatis mengubah
+// seluruh Status Pendaftaran pada paket tersebut menjadi "selesai".
+func FinishPaket(c *gin.Context) {
+	id := c.Param("id")
+
+	var paket models.PaketUmroh
+	if err := config.DB.First(&paket, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Paket tidak ditemukan"})
+		return
+	}
+
+	if paket.IsFinished {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Paket sudah selesai sebelumnya."})
+		return
+	}
+
+	// Tandai paket selesai
+	if err := config.DB.Model(&paket).Update("is_finished", true).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menandai paket selesai"})
+		return
+	}
+
+	// Update seluruh Pendaftaran pada paket ini menjadi status "selesai"
+	if err := config.DB.Model(&models.Pendaftaran{}).
+		Where("paket_id = ?", paket.ID).
+		Update("status", helpers.StatusSelesai).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengupdate status jamaah"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":     "Paket berhasil diselesaikan dan seluruh jamaah diubah menjadi status Selesai.",
+		"is_finished": true,
+	})
+}

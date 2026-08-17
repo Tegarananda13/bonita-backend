@@ -19,6 +19,7 @@ const (
 	StatusMenungguPembayaran = "menunggu_pembayaran"
 	StatusSiapBerangkat      = "siap_berangkat"
 	StatusSelesai            = "selesai"
+	StatusKadaluarsa         = "kadaluarsa"
 
 	// Pengaduan
 	PengaduanMenunggu  = "menunggu"

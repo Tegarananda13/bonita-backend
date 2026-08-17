@@ -55,4 +55,37 @@ func Migrate() {
 		    WHERE table_name = 'pembayaran' AND column_name = 'pendaftaran_id'
 		  )
 	`)
+
+	// Step 7: Backfill registration_source dan registered_by untuk data lama.
+	// Idempoten — hanya mengisi baris yang masih kosong.
+	DB.Exec(`
+		UPDATE pendaftaran
+		SET registration_source = 'customer',
+		    registered_by = 'Self'
+		WHERE registration_source IS NULL OR registration_source = ''
+	`)
+
+	// Step 8: Backfill is_active untuk data paket lama.
+	// AutoMigrate menambahkan kolom dengan DEFAULT true, tapi baris lama
+	// mungkin NULL jika DB-nya tidak mendukung DEFAULT saat ALTER TABLE.
+	DB.Exec(`
+		UPDATE paket_umroh
+		SET is_active = true
+		WHERE is_active IS NULL
+	`)
+
+	// Step 9: Backfill is_finished untuk data paket lama.
+	DB.Exec(`
+		UPDATE paket_umroh
+		SET is_finished = false
+		WHERE is_finished IS NULL
+	`)
+
+	// Step 10: Backfill batas_waktu_dp untuk data pendaftaran lama.
+	// Data lama tidak memiliki deadline, set ke tanggal_daftar + 24 jam.
+	DB.Exec(`
+		UPDATE pendaftaran
+		SET batas_waktu_dp = tanggal_daftar + INTERVAL '24 hours'
+		WHERE batas_waktu_dp IS NULL OR batas_waktu_dp = '0001-01-01 00:00:00'
+	`)
 }

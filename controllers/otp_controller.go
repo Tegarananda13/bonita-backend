@@ -41,6 +41,14 @@ func RequestOTP(c *gin.Context) {
 		return
 	}
 
+	// cek status kadaluarsa
+	if pendaftaran.Status == helpers.StatusKadaluarsa {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Nomor pendaftaran ini sudah kadaluarsa karena pembayaran DP tidak dilakukan dalam batas waktu yang ditentukan. Silakan melakukan pendaftaran baru.",
+		})
+		return
+	}
+
 	// cek apakah customer punya email
 	if pendaftaran.Customer.Email == "" {
 
@@ -138,6 +146,14 @@ func VerifyOTP(c *gin.Context) {
 	}
 
 	var otp models.VerifikasiOTP
+
+	// cek status kadaluarsa
+	if pendaftaran.Status == helpers.StatusKadaluarsa {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Nomor pendaftaran ini sudah kadaluarsa karena pembayaran DP tidak dilakukan dalam batas waktu yang ditentukan. Silakan melakukan pendaftaran baru.",
+		})
+		return
+	}
 
 	// ambil OTP terbaru
 	if err := config.DB.

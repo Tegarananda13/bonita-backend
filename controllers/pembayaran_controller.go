@@ -163,6 +163,7 @@ func GetCustomerDashboard(c *gin.Context) {
 		"payment_status":   paymentStatus,
 		"document_status":  pendaftaran.DocumentStatus,
 		"status":           pendaftaran.Status,
+		"batas_waktu_dp":   pendaftaran.BatasWaktuDP,
 	})
 }
 

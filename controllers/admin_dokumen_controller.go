@@ -168,7 +168,22 @@ func GetDetailDokumen(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"dokumen": dokumen,
+		"dokumen": gin.H{
+			"ID":            dokumen.ID,
+			"JenisDokumen":  dokumen.JenisDokumen,
+			"FilePath":      dokumen.FilePath,
+			"StatusValidasi": dokumen.StatusValidasi,
+			"CreatedAt":     dokumen.CreatedAt,
+			"Pendaftaran": gin.H{
+				"NomorPendaftaran": dokumen.Pendaftaran.NomorPendaftaran,
+				"Customer": gin.H{
+					"Nama": dokumen.Pendaftaran.Customer.Nama,
+				},
+				"Paket": gin.H{
+					"NamaPaket": dokumen.Pendaftaran.Paket.NamaPaket,
+				},
+			},
+		},
 	})
 }
 

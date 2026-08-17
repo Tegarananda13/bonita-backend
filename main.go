@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"bonita-backend/config"
+	"bonita-backend/controllers"
 	"bonita-backend/routes"
 
 	"github.com/gin-gonic/gin"
@@ -26,7 +27,7 @@ func main() {
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins: []string{
-			"http://localhost:5174",
+			"http://localhost:5173",
 		},
 		AllowMethods: []string{
 			"GET",
@@ -45,6 +46,9 @@ func main() {
 	}))
 
 	routes.SetupRoutes(r)
+
+	// Mulai scheduler expiry DP di background
+	controllers.StartExpiryScheduler()
 
 	r.Run(":8080")
 }

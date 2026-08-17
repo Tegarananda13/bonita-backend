@@ -14,6 +14,7 @@ func GetPaket(c *gin.Context) {
 	var paketList []models.PaketUmroh
 
 	if err := config.DB.
+		Where("is_active = ? AND is_finished = ?", true, false).
 		Order("tanggal_berangkat ASC").
 		Find(&paketList).Error; err != nil {
 

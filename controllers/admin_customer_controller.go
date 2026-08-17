@@ -116,6 +116,13 @@ func AdminCreateCustomer(c *gin.Context) {
 		return
 	}
 
+	// Ambil nama admin dari database untuk audit trail
+	var adminUser models.User
+	adminNama := "Admin"
+	if err := config.DB.First(&adminUser, "id = ?", adminID).Error; err == nil {
+		adminNama = adminUser.Nama
+	}
+
 	// ── 3. Validasi PaketID ────────────────────────────────────────────────────
 	paketID, err := uuid.Parse(req.PaketID)
 	if err != nil {
@@ -179,14 +186,16 @@ func AdminCreateCustomer(c *gin.Context) {
 
 	// ── 8. Buat Pendaftaran ───────────────────────────────────────────────────
 	pendaftaran := models.Pendaftaran{
-		CustomerID:       customer.ID,
-		PaketID:          paketID,
-		UserID:           &adminID, // otomatis di-assign ke admin yang login
-		InvoiceID:        &invoice.ID,
-		NomorPendaftaran: nomorPendaftaran,
-		DocumentStatus:   helpers.DocumentBelum,
-		Status:           helpers.StatusProses,
-		TanggalDaftar:    time.Now(),
+		CustomerID:         customer.ID,
+		PaketID:            paketID,
+		UserID:             &adminID, // otomatis di-assign ke admin yang login
+		InvoiceID:          &invoice.ID,
+		NomorPendaftaran:   nomorPendaftaran,
+		DocumentStatus:     helpers.DocumentBelum,
+		Status:             helpers.StatusProses,
+		RegistrationSource: helpers.SourceAdmin,
+		RegisteredBy:       adminNama,
+		TanggalDaftar:      time.Now(),
 	}
 
 	if err := config.DB.Create(&pendaftaran).Error; err != nil {

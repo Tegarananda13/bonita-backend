@@ -144,6 +144,11 @@ func SetupRoutes(r *gin.Engine) {
 			controllers.TandaiSelesai,
 		)
 
+		admin.POST(
+			"/pendaftaran/process-expiry",
+			controllers.ManualProcessExpiry,
+		)
+
 		admin.GET(
 			"/pendaftaran/:nomor",
 			controllers.GetDetailPendaftaran,
@@ -227,6 +232,16 @@ func SetupRoutes(r *gin.Engine) {
 		admin.DELETE(
 			"/paket/:id",
 			controllers.DeletePaket,
+		)
+
+		admin.PATCH(
+			"/paket/:id/status",
+			controllers.ToggleStatusPaket,
+		)
+
+		admin.PATCH(
+			"/paket/:id/finish",
+			controllers.FinishPaket,
 		)
 
 		// ── Pengaduan ──

@@ -10,8 +10,45 @@ import (
 	"bonita-backend/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
+
+// jwtKey sudah dideklarasikan di auth_controller.go dalam package yang sama
+
+// resolveRegistrationSource menentukan RegistrationSource dan RegisteredBy berdasarkan
+// nilai registration_source dari request. Untuk source "admin", nama admin diambil
+// dari JWT token pada header Authorization.
+func resolveRegistrationSource(c *gin.Context, source string) (string, string) {
+	switch strings.ToLower(source) {
+	case helpers.SourceAdmin:
+		// Coba ambil nama admin dari JWT
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+			tok, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+				return jwtKey, nil
+			})
+			if err == nil && tok.Valid {
+				if claims, ok := tok.Claims.(jwt.MapClaims); ok {
+					if uidStr, ok := claims["user_id"].(string); ok {
+						if uid, err := uuid.Parse(uidStr); err == nil {
+							var u models.User
+							if config.DB.First(&u, "id = ?", uid).Error == nil {
+								return helpers.SourceAdmin, u.Nama
+							}
+						}
+					}
+				}
+			}
+		}
+		return helpers.SourceAdmin, "Admin"
+	case helpers.SourceChatbot:
+		return helpers.SourceChatbot, "AI Chatbot"
+	default:
+		return helpers.SourceCustomer, "Self"
+	}
+}
 
 // JamaahRequest adalah data satu jamaah dalam request pendaftaran.
 type JamaahRequest struct {
@@ -32,18 +69,23 @@ type JamaahRequest struct {
 
 // CreatePendaftaranRequest mendukung satu maupun banyak jamaah.
 type CreatePendaftaranRequest struct {
-	PaketID string          `json:"paket_id" binding:"required"`
-	Jamaah  []JamaahRequest `json:"jamaah"   binding:"required,min=1"`
+	PaketID            string          `json:"paket_id" binding:"required"`
+	Jamaah             []JamaahRequest `json:"jamaah"   binding:"required,min=1"`
+	RegistrationSource string          `json:"registration_source"` // opsional: "customer" | "admin" | "chatbot"
 }
 
 // CreatePendaftaran — POST /pendaftaran
 // Mendaftarkan satu atau banyak jamaah dalam satu Invoice.
+// Mendukung tiga sumber: "customer" (default), "admin", "chatbot".
 func CreatePendaftaran(c *gin.Context) {
 	var req CreatePendaftaranRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Data tidak lengkap atau format salah"})
 		return
 	}
+
+	// Tentukan registration source sebelum proses data
+	regSource, regBy := resolveRegistrationSource(c, req.RegistrationSource)
 
 	// ── Validasi & trim setiap jamaah ────────────────────────────────────────
 	for i := range req.Jamaah {
@@ -109,6 +151,18 @@ func CreatePendaftaran(c *gin.Context) {
 		return
 	}
 
+	// cek paket selesai — tidak tersedia untuk pendaftaran baru
+	if paket.IsFinished {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Paket umroh sudah selesai dan tidak tersedia untuk pendaftaran."})
+		return
+	}
+
+	// cek paket nonaktif
+	if !paket.IsActive {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Paket umroh tidak aktif dan tidak tersedia untuk pendaftaran."})
+		return
+	}
+
 	// cek batas pendaftaran
 	batasDaftar := paket.TanggalBerangkat.AddDate(0, 0, -paket.BatasPendaftaran)
 	if time.Now().After(batasDaftar) {
@@ -171,14 +225,17 @@ func CreatePendaftaran(c *gin.Context) {
 		nomor := "UMR-" + time.Now().Format("20060102150405") + "-" + j.NIK[len(j.NIK)-4:]
 
 		pendaftaran := models.Pendaftaran{
-			CustomerID:       customer.ID,
-			PaketID:          paketID,
-			UserID:           nil,
-			InvoiceID:        &invoice.ID,
-			NomorPendaftaran: nomor,
-			DocumentStatus:   helpers.DocumentBelum,
-			Status:           helpers.StatusProses,
-			TanggalDaftar:    time.Now(),
+			CustomerID:         customer.ID,
+			PaketID:            paketID,
+			UserID:             nil,
+			InvoiceID:          &invoice.ID,
+			NomorPendaftaran:   nomor,
+			DocumentStatus:     helpers.DocumentBelum,
+			Status:             helpers.StatusProses,
+			RegistrationSource: regSource,
+			RegisteredBy:       regBy,
+			TanggalDaftar:      time.Now(),
+			BatasWaktuDP:       time.Now().Add(24 * time.Hour),
 		}
 		if err := config.DB.Create(&pendaftaran).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan pendaftaran: " + j.Nama})
@@ -198,6 +255,7 @@ func CreatePendaftaran(c *gin.Context) {
 	}
 
 	// ── Response ─────────────────────────────────────────────────────────────
+	batasDP := time.Now().Add(24 * time.Hour)
 	c.JSON(http.StatusCreated, gin.H{
 		"message":        "Pendaftaran berhasil",
 		"nomor_invoice":  nomorInvoice,
@@ -205,6 +263,7 @@ func CreatePendaftaran(c *gin.Context) {
 		"total_tagihan":  invoice.TotalTagihan,
 		"paket":          paket.NamaPaket,
 		"pendaftaran":    results,
+		"batas_waktu_dp": batasDP,
 		// backward-compat: field lama tetap ada (diambil dari jamaah pertama)
 		"data": gin.H{
 			"nomor_pendaftaran": results[0].NomorPendaftaran,
@@ -212,6 +271,7 @@ func CreatePendaftaran(c *gin.Context) {
 			"paket":             paket.NamaPaket,
 			"status":            helpers.StatusProses,
 			"kuota_tersisa":     paket.KuotaMax - paket.KuotaTerpakai - jumlahJamaah,
+			"batas_waktu_dp":    batasDP,
 		},
 	})
 }
