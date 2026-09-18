@@ -8,14 +8,15 @@ import (
 )
 
 type ChatbotLog struct {
-	ID         uuid.UUID  `gorm:"type:uuid;primaryKey"`
-	CustomerID *uuid.UUID `gorm:"type:uuid;null"`
-	Pertanyaan string
-	Jawaban    string
-	CreatedAt  time.Time
+	ID          uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	// Phase 8A: CustomerID sudah dihapus dari DB.
+	CustomerNIK *string    `gorm:"column:customer_nik"` // FK ke customer.nik (nullable)
+	Pertanyaan  string
+	Jawaban     string
+	CreatedAt   time.Time
 
-	// Relasi
-	Customer Customer `gorm:"foreignKey:CustomerID"`
+	// Relasi — CustomerNIK sebagai FK (nullable, opsional)
+	Customer Customer `gorm:"foreignKey:CustomerNIK;references:NIK"`
 }
 
 func (c *ChatbotLog) BeforeCreate(tx *gorm.DB) (err error) {

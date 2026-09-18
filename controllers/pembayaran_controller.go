@@ -14,16 +14,17 @@ import (
 
 // recalcInvoiceStatus menghitung ulang StatusPembayaran dan TotalPembayaran
 // pada Invoice berdasarkan seluruh pembayaran yang sudah diterima.
-func recalcInvoiceStatus(invoiceID interface{}) {
+// Phase 6B: parameter diubah dari UUID ke nomor_invoice (business key).
+func recalcInvoiceStatus(nomorInvoice string) {
 	var invoice models.Invoice
-	if err := config.DB.First(&invoice, "id = ?", invoiceID).Error; err != nil {
+	if err := config.DB.Where("nomor_invoice = ?", nomorInvoice).First(&invoice).Error; err != nil {
 		return
 	}
 
 	var totalDiterima float64
 	config.DB.
 		Model(&models.Pembayaran{}).
-		Where("invoice_id = ? AND status = ?", invoice.ID, helpers.PaymentVerificationDiterima).
+		Where("nomor_invoice = ? AND status = ?", nomorInvoice, helpers.PaymentVerificationDiterima).
 		Select("COALESCE(SUM(jumlah),0)").
 		Scan(&totalDiterima)
 
@@ -46,9 +47,9 @@ func recalcInvoiceStatus(invoiceID interface{}) {
 
 	// update status semua pendaftaran yang terhubung ke invoice ini
 	var pendaftaranList []models.Pendaftaran
-	config.DB.Where("invoice_id = ?", invoice.ID).Find(&pendaftaranList)
+	config.DB.Where("nomor_invoice = ?", nomorInvoice).Find(&pendaftaranList)
 	for _, p := range pendaftaranList {
-		helpers.UpdateStatusPendaftaran(p.ID)
+		helpers.UpdateStatusPendaftaran(p.NomorPendaftaran)
 	}
 }
 
@@ -62,19 +63,20 @@ func CreatePembayaran(c *gin.Context) {
 		return
 	}
 
-	pendaftaranID := c.MustGet("pendaftaran_id")
+	nomor := c.MustGet("pendaftaran_id").(string)
 
 	var pendaftaran models.Pendaftaran
 	if err := config.DB.
 		Preload("Paket").
 		Preload("Invoice").
-		First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+		Where("nomor_pendaftaran = ?", nomor).First(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
 		return
 	}
 
+
 	// Pastikan Invoice ada (seharusnya selalu ada karena dibuat saat pendaftaran)
-	if pendaftaran.InvoiceID == nil {
+	if pendaftaran.NomorInvoice == "" {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invoice untuk pendaftaran ini belum tersedia"})
 		return
 	}
@@ -85,7 +87,7 @@ func CreatePembayaran(c *gin.Context) {
 	var total float64
 	config.DB.
 		Model(&models.Pembayaran{}).
-		Where("invoice_id = ? AND status = ?", invoice.ID, helpers.PaymentVerificationDiterima).
+		Where("nomor_invoice = ? AND status = ?", pendaftaran.NomorInvoice, helpers.PaymentVerificationDiterima).
 		Select("COALESCE(SUM(jumlah),0)").
 		Scan(&total)
 
@@ -102,7 +104,7 @@ func CreatePembayaran(c *gin.Context) {
 	}
 
 	pembayaran := models.Pembayaran{
-		InvoiceID:    invoice.ID,
+		NomorInvoice: invoice.NomorInvoice,
 		Jumlah:       req.Jumlah,
 		TanggalBayar: time.Now(),
 		Status:       helpers.PaymentVerificationPending,
@@ -125,20 +127,20 @@ func CreatePembayaran(c *gin.Context) {
 }
 
 func GetCustomerDashboard(c *gin.Context) {
-	pendaftaranID := c.MustGet("pendaftaran_id")
+	nomor := c.MustGet("pendaftaran_id").(string)
 
 	var pendaftaran models.Pendaftaran
 	if err := config.DB.
 		Preload("Customer").
 		Preload("Paket").
 		Preload("Invoice").
-		First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+		Where("nomor_pendaftaran = ?", nomor).First(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
 		return
 	}
 
 	paymentStatus := ""
-	if pendaftaran.InvoiceID != nil {
+	if pendaftaran.NomorInvoice != "" {
 		paymentStatus = pendaftaran.Invoice.StatusPembayaran
 	}
 
@@ -146,7 +148,7 @@ func GetCustomerDashboard(c *gin.Context) {
 	totalTagihanDash := pendaftaran.Paket.Harga
 	totalPembayaranDash := 0.0
 	nomorInvoiceDash := ""
-	if pendaftaran.InvoiceID != nil {
+	if pendaftaran.NomorInvoice != "" {
 		totalTagihanDash = pendaftaran.Invoice.TotalTagihan
 		totalPembayaranDash = pendaftaran.Invoice.TotalPembayaran
 		nomorInvoiceDash = pendaftaran.Invoice.NomorInvoice
@@ -168,18 +170,18 @@ func GetCustomerDashboard(c *gin.Context) {
 }
 
 func GetPembayaran(c *gin.Context) {
-	pendaftaranID := c.MustGet("pendaftaran_id")
+	nomor := c.MustGet("pendaftaran_id").(string)
 
 	var pendaftaran models.Pendaftaran
 	if err := config.DB.
 		Preload("Paket").
 		Preload("Invoice").
-		First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+		Where("nomor_pendaftaran = ?", nomor).First(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
 		return
 	}
 
-	if pendaftaran.InvoiceID == nil {
+	if pendaftaran.NomorInvoice == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"total_dibayar":  0,
 			"harga_paket":    pendaftaran.Paket.Harga,
@@ -192,7 +194,7 @@ func GetPembayaran(c *gin.Context) {
 
 	var pembayaran []models.Pembayaran
 	if err := config.DB.
-		Where("invoice_id = ?", pendaftaran.InvoiceID).
+		Where("nomor_invoice = ?", pendaftaran.NomorInvoice).
 		Order("tanggal_bayar ASC").
 		Find(&pembayaran).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil pembayaran"})
@@ -229,17 +231,17 @@ func GetPembayaran(c *gin.Context) {
 }
 
 func UploadBuktiPembayaran(c *gin.Context) {
-	pendaftaranID := c.MustGet("pendaftaran_id")
+	nomor := c.MustGet("pendaftaran_id").(string)
 
 	var pendaftaran models.Pendaftaran
 	if err := config.DB.
 		Preload("Invoice").
-		First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+		Where("nomor_pendaftaran = ?", nomor).First(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
 		return
 	}
 
-	if pendaftaran.InvoiceID == nil {
+	if pendaftaran.NomorInvoice == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Tidak ada invoice untuk pendaftaran ini"})
 		return
 	}
@@ -268,7 +270,7 @@ func UploadBuktiPembayaran(c *gin.Context) {
 
 	var pembayaran models.Pembayaran
 	if err := config.DB.
-		Where("id = ? AND invoice_id = ?", pembayaranID, pendaftaran.InvoiceID).
+		Where("id = ? AND nomor_invoice = ?", pembayaranID, pendaftaran.NomorInvoice).
 		First(&pembayaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pembayaran tidak ditemukan"})
 		return

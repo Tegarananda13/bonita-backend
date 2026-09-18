@@ -64,7 +64,7 @@ func VerifikasiDokumen(c *gin.Context) {
 	var dokumenList []models.Dokumen
 
 	if err := config.DB.
-		Where("pendaftaran_id = ?", dokumen.PendaftaranID).
+		Where("nomor_pendaftaran = ?", dokumen.NomorPendaftaran).
 		Find(&dokumenList).Error; err != nil {
 
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -124,19 +124,17 @@ func VerifikasiDokumen(c *gin.Context) {
 	}
 
 	// 🔥 UPDATE STATUS DI PENDAFTARAN
-	var pendaftaran models.Pendaftaran
-
 	if err := config.DB.
-		First(&pendaftaran, "id = ?", dokumen.PendaftaranID).Error; err == nil {
+		Where("nomor_pendaftaran = ?", dokumen.NomorPendaftaran).First(&models.Pendaftaran{}).Error; err == nil {
 
 		// Gunakan empty struct + WHERE agar GORM tidak melakukan cascade
 		// upsert ke Paket melalui association Pendaftaran.
 		config.DB.
 			Model(&models.Pendaftaran{}).
-			Where("id = ?", pendaftaran.ID).
+			Where("nomor_pendaftaran = ?", dokumen.NomorPendaftaran).
 			Update("document_status", documentStatus)
 
-			helpers.UpdateStatusPendaftaran(pendaftaran.ID)
+		helpers.UpdateStatusPendaftaran(dokumen.NomorPendaftaran)
 	}
 
 	c.JSON(http.StatusOK, gin.H{

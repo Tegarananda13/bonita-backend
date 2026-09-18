@@ -63,10 +63,10 @@ func CustomerMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// simpan pendaftaran ID ke context
+		// simpan nomor pendaftaran ke context (Phase 3: string, bukan UUID)
 		c.Set(
 			"pendaftaran_id",
-			session.PendaftaranID,
+			session.NomorPendaftaran,
 		)
 
 		c.Next()

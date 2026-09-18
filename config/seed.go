@@ -53,9 +53,9 @@ func Seed() {
 	nomor1 := "UMR-SEED-0001"
 	pend1 := models.Pendaftaran{
 		NomorPendaftaran: nomor1,
-		CustomerID:       cust1.ID,
+		CustomerNIK:      cust1.NIK,         // FK ke customer.nik
 		PaketID:          paket.ID,
-		InvoiceID:        &inv1.ID,
+		NomorInvoice:     inv1.NomorInvoice, // Phase 6C: ganti InvoiceID ke NomorInvoice
 		DocumentStatus:   "belum",
 		Status:           "proses",
 		TanggalDaftar:    time.Now(),
@@ -110,9 +110,9 @@ func Seed() {
 	// Pendaftaran seed 2 & 3 (keduanya ke invoice yang sama)
 	pend2 := models.Pendaftaran{
 		NomorPendaftaran: "UMR-SEED-0002",
-		CustomerID:       cust2.ID,
+		CustomerNIK:      cust2.NIK,         // FK ke customer.nik
 		PaketID:          paket.ID,
-		InvoiceID:        &inv2.ID,
+		NomorInvoice:     inv2.NomorInvoice, // Phase 6C
 		DocumentStatus:   "belum",
 		Status:           "proses",
 		TanggalDaftar:    time.Now(),
@@ -121,9 +121,9 @@ func Seed() {
 
 	pend3 := models.Pendaftaran{
 		NomorPendaftaran: "UMR-SEED-0003",
-		CustomerID:       cust3.ID,
+		CustomerNIK:      cust3.NIK,         // FK ke customer.nik
 		PaketID:          paket.ID,
-		InvoiceID:        &inv2.ID,
+		NomorInvoice:     inv2.NomorInvoice, // Phase 6C
 		DocumentStatus:   "belum",
 		Status:           "proses",
 		TanggalDaftar:    time.Now(),
@@ -132,7 +132,7 @@ func Seed() {
 
 	// 2 Pembayaran untuk INV-002
 	pay1 := models.Pembayaran{
-		InvoiceID:    inv2.ID,
+		NomorInvoice: inv2.NomorInvoice, // Phase 6C: ganti InvoiceID ke NomorInvoice
 		Jumlah:       5_000_000,
 		TanggalBayar: time.Now().AddDate(0, 0, -7),
 		Status:       "diterima",
@@ -140,7 +140,7 @@ func Seed() {
 	DB.Create(&pay1)
 
 	pay2 := models.Pembayaran{
-		InvoiceID:    inv2.ID,
+		NomorInvoice: inv2.NomorInvoice, // Phase 6C
 		Jumlah:       5_000_000,
 		TanggalBayar: time.Now().AddDate(0, 0, -3),
 		Status:       "diterima",

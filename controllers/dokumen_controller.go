@@ -22,12 +22,12 @@ func UploadDokumen(c *gin.Context) {
 	}
 
 	// ambil pendaftaran dari customer token
-	pendaftaranID := c.MustGet("pendaftaran_id")
+	nomor := c.MustGet("pendaftaran_id").(string)
 
 	var pendaftaran models.Pendaftaran
 	if err := config.DB.
 		Preload("Invoice").
-		First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+		Where("nomor_pendaftaran = ?", nomor).First(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
 		return
 	}
@@ -35,7 +35,7 @@ func UploadDokumen(c *gin.Context) {
 	// ── Validasi: customer boleh upload jika Invoice StatusPembayaran bukan "belum" ──
 	// Yaitu: dp, belum_lunas, atau lunas.
 	invoiceStatus := models.InvoiceStatusBelumBayar
-	if pendaftaran.InvoiceID != nil {
+	if pendaftaran.NomorInvoice != "" {
 		invoiceStatus = pendaftaran.Invoice.StatusPembayaran
 	}
 
@@ -74,11 +74,11 @@ func UploadDokumen(c *gin.Context) {
 
 	// simpan database
 	dokumen := models.Dokumen{
-		PendaftaranID:  pendaftaran.ID,
-		JenisDokumen:   jenis,
-		FilePath:       fileURL,
-		StatusValidasi: "pending",
-		CreatedAt:      time.Now(),
+		NomorPendaftaran: pendaftaran.NomorPendaftaran,
+		JenisDokumen:     jenis,
+		FilePath:         fileURL,
+		StatusValidasi:   "pending",
+		CreatedAt:        time.Now(),
 	}
 
 	if err := config.DB.Create(&dokumen).Error; err != nil {
@@ -97,14 +97,15 @@ func UploadDokumen(c *gin.Context) {
 	})
 }
 
+
 func GetDokumen(c *gin.Context) {
 
-	pendaftaranID := c.MustGet("pendaftaran_id")
+	nomor := c.MustGet("pendaftaran_id").(string)
 
 	var dokumen []models.Dokumen
 
 	if err := config.DB.
-		Where("pendaftaran_id = ?", pendaftaranID).
+		Where("nomor_pendaftaran = ?", nomor).
 		Order("created_at DESC").
 		Find(&dokumen).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil dokumen"})
@@ -124,3 +125,4 @@ func GetDokumen(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"dokumen": result})
 }
+

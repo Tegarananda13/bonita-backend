@@ -120,6 +120,15 @@ func Chatbot(c *gin.Context) {
 
 		switch req.Step {
 
+		// ── Pengaduan selesai (stale state) → arahkan ke pengaduan baru ──
+		case "done", "error":
+			chatbotResponse(c, req.Pertanyaan, "pengaduan",
+				"Baik, saya akan membantu membuat laporan pengaduan.\n\n"+
+					"Silakan masukkan **Nomor UMR** Anda terlebih dahulu.\n\n"+
+					"Contoh: **UMR-20260718123456**",
+				"ask_nomor", "")
+			return
+
 		// ── Step 1: customer mengirim nomor UMR ──
 		case "ask_nomor":
 			nomorInput := strings.TrimSpace(req.Pertanyaan)
@@ -140,7 +149,7 @@ func Chatbot(c *gin.Context) {
 			chatbotResponse(c, req.Pertanyaan, "pengaduan",
 				"Baik, Nomor UMR **"+nomorInput+"** atas nama **"+pendaftaran.Customer.Nama+"** ditemukan.\n\n"+
 					"Silakan pilih **kategori pengaduan** Anda:",
-				"ask_kategori", pendaftaran.ID.String())
+				"ask_kategori", pendaftaran.NomorPendaftaran)
 			return
 
 		// ── Step 2: customer memilih kategori ──
@@ -193,9 +202,11 @@ func Chatbot(c *gin.Context) {
 					return
 				}
 
-				// parse pendaftaran ID
-				pendaftaranID, err := uuid.Parse(req.PendaftaranID)
-				if err != nil {
+				// cari pendaftaran berdasarkan nomor (req.PendaftaranID berisi nomor_pendaftaran)
+				var pendaftaranForPengaduan models.Pendaftaran
+				if err := config.DB.
+					Where("nomor_pendaftaran = ?", req.PendaftaranID).
+					First(&pendaftaranForPengaduan).Error; err != nil {
 					chatbotResponse(c, req.Pertanyaan, "pengaduan",
 						"Terjadi kesalahan pada sesi Anda. Silakan mulai ulang proses pengaduan.",
 						"error", "")
@@ -204,13 +215,13 @@ func Chatbot(c *gin.Context) {
 
 				// simpan pengaduan ke database
 				pengaduan := models.Pengaduan{
-					PendaftaranID: pendaftaranID,
-					Judul:         buildJudul(isi),
-					IsiPengaduan:  isi,
-					Kategori:      kategori,
-					Status:        helpers.PengaduanMenunggu,
-					CreatedAt:     time.Now(),
-					UpdatedAt:     time.Now(),
+					NomorPendaftaran: pendaftaranForPengaduan.NomorPendaftaran,
+					Judul:            buildJudul(isi),
+					IsiPengaduan:     isi,
+					Kategori:         kategori,
+					Status:           helpers.PengaduanMenunggu,
+					CreatedAt:        time.Now(),
+					UpdatedAt:        time.Now(),
 				}
 
 				if err := config.DB.Create(&pengaduan).Error; err != nil {
@@ -600,10 +611,10 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 		nomor := "UMR-" + time.Now().Format("20060102150405") + "-" + rd.NIK[len(rd.NIK)-4:]
 		batasDP := time.Now().Add(24 * time.Hour)
 		pendaftaran := models.Pendaftaran{
-			CustomerID:         customer.ID,
+			CustomerNIK:        customer.NIK, // FK ke customer.nik
 			PaketID:            paketID,
 			UserID:             nil,
-			InvoiceID:          &invoice.ID,
+			NomorInvoice:       invoice.NomorInvoice,
 			NomorPendaftaran:   nomor,
 			DocumentStatus:     helpers.DocumentBelum,
 			Status:             helpers.StatusProses,
@@ -634,7 +645,8 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 				"jawaban":           fmt.Sprintf("✅ **Pendaftaran berhasil!**\n\n📋 Nomor Pendaftaran: **%s**\n🧾 Nomor Invoice: **%s**\n📦 Paket: **%s**\n\n⏰ **Pembayaran DP harus dilakukan paling lambat: %s**\n\nSimpan nomor pendaftaran Anda untuk login ke Portal Jamaah. Admin Bonita akan segera memproses pendaftaran Anda.", nomor, nomorInvoice, paket.NamaPaket, batasDPStr),
 				"flow":              "registrasi",
 				"step":              "selesai",
-				"pendaftaran_id":    pendaftaran.ID.String(),
+				// "pendaftaran_id" berisi nomor_pendaftaran (Phase 4 — bukan UUID lagi)
+				"pendaftaran_id":    pendaftaran.NomorPendaftaran,
 				"nomor_pendaftaran": nomor,
 				"batas_waktu_dp":    batasDP,
 				"reg_data":          nil,

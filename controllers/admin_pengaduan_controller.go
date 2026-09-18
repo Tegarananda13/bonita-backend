@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -83,8 +84,8 @@ func GetDetailPengaduan(c *gin.Context) {
 
 	// Ambil data pembayaran terkait invoice pendaftaran
 	var pembayaran []models.Pembayaran
-	if pengaduan.Pendaftaran.InvoiceID != nil {
-		config.DB.Where("invoice_id = ?", pengaduan.Pendaftaran.InvoiceID).Find(&pembayaran)
+	if pengaduan.Pendaftaran.NomorInvoice != "" {
+		config.DB.Where("nomor_invoice = ?", pengaduan.Pendaftaran.NomorInvoice).Find(&pembayaran)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -102,7 +103,6 @@ func GetDetailPengaduan(c *gin.Context) {
 			"email": pengaduan.Pendaftaran.Customer.Email,
 		},
 		"pendaftaran": gin.H{
-			"id":                pengaduan.Pendaftaran.ID,
 			"nomor_pendaftaran": pengaduan.Pendaftaran.NomorPendaftaran,
 			"paket":             pengaduan.Pendaftaran.Paket.NamaPaket,
 			"tanggal_berangkat": pengaduan.Pendaftaran.Paket.TanggalBerangkat,
@@ -115,15 +115,15 @@ func GetDetailPengaduan(c *gin.Context) {
 }
 
 // UpdateStatusPengaduan — PATCH /admin/pengaduan/:id/status
-// Admin mengubah status pengaduan.
+// Admin mengubah status pengaduan, lalu kirim email notifikasi ke customer.
 func UpdateStatusPengaduan(c *gin.Context) {
 
 	id := c.Param("id")
 
-	var body struct {
+	var req struct {
 		Status string `json:"status" binding:"required"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Status wajib diisi"})
 		return
 	}
@@ -134,29 +134,95 @@ func UpdateStatusPengaduan(c *gin.Context) {
 		helpers.PengaduanDiproses: true,
 		helpers.PengaduanSelesai:  true,
 	}
-	if !validStatuses[body.Status] {
+	if !validStatuses[req.Status] {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Status tidak valid. Pilihan: menunggu, diproses, selesai",
 		})
 		return
 	}
 
+	// ambil pengaduan beserta relasi pendaftaran dan customer
 	var pengaduan models.Pengaduan
-	if err := config.DB.First(&pengaduan, "id = ?", id).Error; err != nil {
+	if err := config.DB.
+		Preload("Pendaftaran.Customer").
+		First(&pengaduan, "id = ?", id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pengaduan tidak ditemukan"})
 		return
 	}
 
+	// Cegah duplicate email: skip jika status tidak berubah
+	if pengaduan.Status == req.Status {
+		c.JSON(http.StatusOK, gin.H{
+			"message":    "Status tidak berubah",
+			"status":     pengaduan.Status,
+			"email_sent": false,
+		})
+		return
+	}
+
+	// simpan status baru ke database
 	if err := config.DB.Model(&pengaduan).Updates(map[string]interface{}{
-		"status":     body.Status,
+		"status":     req.Status,
 		"updated_at": time.Now(),
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengubah status"})
 		return
 	}
 
+	// ── Kirim email notifikasi ke customer ────────────────────────────────────
+	emailSent := false
+	customer := pengaduan.Pendaftaran.Customer
+
+	if customer.Email == "" {
+		fmt.Printf("[Email Notifikasi] Warning: customer untuk pengaduan %s tidak memiliki email\n", id)
+	} else {
+		// Tentukan subject & emailBody berdasarkan status baru
+		var subject, emailBody string
+		nomorUMR := pengaduan.NomorPendaftaran
+
+		switch req.Status {
+		case helpers.PengaduanDiproses:
+			subject = "Pengaduan Anda Sedang Diproses - Bonita Umrah"
+			emailBody = fmt.Sprintf(
+				"Halo %s,\n\n"+
+					"Pengaduan Anda dengan nomor referensi %s saat ini telah berstatus Diproses.\n\n"+
+					"Admin Bonita Umrah sedang menindaklanjuti pengaduan Anda.\n\n"+
+					"Jika ada pertanyaan, Anda dapat menghubungi kami kembali melalui aplikasi.\n\n"+
+					"Terima kasih,\n"+
+					"Tim Bonita Umrah",
+				customer.Nama, nomorUMR,
+			)
+		case helpers.PengaduanSelesai:
+			subject = "Pengaduan Anda Telah Selesai - Bonita Umrah"
+			emailBody = fmt.Sprintf(
+				"Halo %s,\n\n"+
+					"Pengaduan Anda dengan nomor referensi %s telah berstatus Selesai.\n\n"+
+					"Pengaduan Anda telah selesai ditangani oleh Admin Bonita Umrah.\n\n"+
+					"Jika ada pertanyaan lebih lanjut, Anda dapat menghubungi kami kembali melalui aplikasi.\n\n"+
+					"Terima kasih,\n"+
+					"Tim Bonita Umrah",
+				customer.Nama, nomorUMR,
+			)
+		default:
+			// Status 'menunggu' — tidak perlu email
+		}
+
+		if subject != "" {
+			if err := helpers.SendEmail(customer.Email, subject, emailBody); err != nil {
+				// Email gagal: catat ke log, status database tetap tersimpan
+				fmt.Printf("[Email Notifikasi] Gagal kirim email ke %s untuk pengaduan %s: %v\n",
+					customer.Email, id, err)
+			} else {
+				emailSent = true
+				fmt.Printf("[Email Notifikasi] Email berhasil dikirim ke %s (pengaduan %s → %s)\n",
+					customer.Email, id, req.Status)
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Status berhasil diperbarui",
-		"status":  body.Status,
+		"message":    "Status berhasil diperbarui",
+		"status":     req.Status,
+		"email_sent": emailSent,
 	})
 }

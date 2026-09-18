@@ -225,10 +225,10 @@ func CreatePendaftaran(c *gin.Context) {
 		nomor := "UMR-" + time.Now().Format("20060102150405") + "-" + j.NIK[len(j.NIK)-4:]
 
 		pendaftaran := models.Pendaftaran{
-			CustomerID:         customer.ID,
+			CustomerNIK:        customer.NIK, // FK ke customer.nik
 			PaketID:            paketID,
 			UserID:             nil,
-			InvoiceID:          &invoice.ID,
+			NomorInvoice:       invoice.NomorInvoice,
 			NomorPendaftaran:   nomor,
 			DocumentStatus:     helpers.DocumentBelum,
 			Status:             helpers.StatusProses,
@@ -320,7 +320,7 @@ func GetPendaftaranByNomor(c *gin.Context) {
 
 	var otp models.VerifikasiOTP
 	if err := config.DB.
-		Where("pendaftaran_id = ?", pendaftaran.ID).
+		Where("nomor_pendaftaran = ?", pendaftaran.NomorPendaftaran).
 		Order("created_at DESC").
 		First(&otp).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "OTP tidak ditemukan"})
@@ -344,7 +344,7 @@ func GetPendaftaranByNomor(c *gin.Context) {
 	config.DB.Save(&otp)
 
 	paymentStatus := models.InvoiceStatusBelumBayar
-	if pendaftaran.InvoiceID != nil {
+	if pendaftaran.NomorInvoice != "" {
 		paymentStatus = pendaftaran.Invoice.StatusPembayaran
 	}
 

@@ -28,6 +28,9 @@ func ConnectDatabase() {
 		NamingStrategy: schema.NamingStrategy{
 			SingularTable: true,
 		},
+		// FK dikelola manual via SQL migration — cegah AutoMigrate membuat FK otomatis
+		// yang bisa konflik dengan constraint yang sudah ada (Phase 2 & 3).
+		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 
 	if err != nil {

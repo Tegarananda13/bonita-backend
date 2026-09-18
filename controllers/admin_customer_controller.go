@@ -186,10 +186,10 @@ func AdminCreateCustomer(c *gin.Context) {
 
 	// ── 8. Buat Pendaftaran ───────────────────────────────────────────────────
 	pendaftaran := models.Pendaftaran{
-		CustomerID:         customer.ID,
+		CustomerNIK:        customer.NIK, // FK ke customer.nik
 		PaketID:            paketID,
 		UserID:             &adminID, // otomatis di-assign ke admin yang login
-		InvoiceID:          &invoice.ID,
+		NomorInvoice:       invoice.NomorInvoice,
 		NomorPendaftaran:   nomorPendaftaran,
 		DocumentStatus:     helpers.DocumentBelum,
 		Status:             helpers.StatusProses,
@@ -217,13 +217,12 @@ func AdminCreateCustomer(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Customer berhasil didaftarkan.",
 		"customer": gin.H{
-			"id":    customer.ID,
+			"nik":   customer.NIK,
 			"nama":  customer.Nama,
 			"no_hp": customer.NoHP,
 			"email": customer.Email,
 		},
 		"pendaftaran": gin.H{
-			"id":               pendaftaran.ID,
 			"nomor_pendaftaran": nomorPendaftaran,
 			"nomor_invoice":    nomorInvoice,
 			"paket":            paket.NamaPaket,
@@ -259,7 +258,6 @@ func AdminGetAllCustomer(c *gin.Context) {
 	var result []gin.H
 	for _, p := range pendaftarans {
 		result = append(result, gin.H{
-			"id":               p.ID,
 			"nomor_pendaftaran": p.NomorPendaftaran,
 			"nama_customer":    p.Customer.Nama,
 			"nik":              p.Customer.NIK,

@@ -135,12 +135,12 @@ func SetupRoutes(r *gin.Engine) {
 		)
 
 		admin.PUT(
-			"/pendaftaran/:id/assign",
+			"/pendaftaran/:nomor/assign",
 			controllers.AssignPendaftaran,
 		)
 
 		admin.PUT(
-			"/pendaftaran/:id/selesai",
+			"/pendaftaran/:nomor/selesai",
 			controllers.TandaiSelesai,
 		)
 
@@ -250,11 +250,11 @@ func SetupRoutes(r *gin.Engine) {
 		admin.PATCH("/pengaduan/:id/status", controllers.UpdateStatusPengaduan)
 
 		// ── Admin input pembayaran & dokumen dari halaman detail ──
-		admin.POST("/pendaftaran/:id/pembayaran", controllers.AdminCreatePembayaran)
+		admin.POST("/pendaftaran/:nomor/pembayaran", controllers.AdminCreatePembayaran)
 		admin.PUT("/pembayaran/:id/admin", controllers.AdminUpdatePembayaran)
 		admin.DELETE("/pembayaran/:id/admin", controllers.AdminDeletePembayaran)
 
-		admin.POST("/pendaftaran/:id/dokumen", controllers.AdminUploadDokumen)
+		admin.POST("/pendaftaran/:nomor/dokumen", controllers.AdminUploadDokumen)
 		admin.PUT("/dokumen/:id/admin", controllers.AdminUpdateDokumen)
 		admin.DELETE("/dokumen/:id/admin", controllers.AdminDeleteDokumen)
 

@@ -37,7 +37,7 @@ func ProcessExpiry() {
 		return
 	}
 
-	// Kelompokkan per InvoiceID untuk pengecekan DP dan return kuota secara grup
+	// Kelompokkan per NomorInvoice untuk pengecekan DP dan return kuota secara grup
 	type invoiceGroup struct {
 		paketID string
 		count   int
@@ -47,20 +47,20 @@ func ProcessExpiry() {
 	invoiceMap := make(map[string]*invoiceGroup)
 
 	for _, p := range pendaftaranList {
-		if p.InvoiceID == nil {
+		if p.NomorInvoice == "" {
 			// Pendaftaran tanpa invoice langsung kadaluarsakan
 			config.DB.Model(&models.Pendaftaran{}).
-				Where("id = ?", p.ID).
+				Where("nomor_pendaftaran = ?", p.NomorPendaftaran).
 				Update("status", helpers.StatusKadaluarsa)
 			continue
 		}
 
-		key := p.InvoiceID.String()
+		key := p.NomorInvoice
 		if _, exists := invoiceMap[key]; !exists {
 			// Cek apakah invoice ini sudah punya DP yang diterima
 			var countDP int64
 			config.DB.Model(&models.Pembayaran{}).
-				Where("invoice_id = ? AND status = ?", p.InvoiceID, helpers.PaymentVerificationDiterima).
+				Where("nomor_invoice = ? AND status = ?", p.NomorInvoice, helpers.PaymentVerificationDiterima).
 				Count(&countDP)
 
 			invoiceMap[key] = &invoiceGroup{
@@ -81,7 +81,7 @@ func ProcessExpiry() {
 		// Update semua pendaftaran dalam invoice ini → kadaluarsa
 		result := config.DB.
 			Model(&models.Pendaftaran{}).
-			Where("invoice_id = ? AND status = ?", invoiceIDStr, helpers.StatusProses).
+			Where("nomor_invoice = ? AND status = ?", invoiceIDStr, helpers.StatusProses).
 			Update("status", helpers.StatusKadaluarsa)
 		if result.Error != nil {
 			log.Printf("[Expiry] Gagal update status invoice %s: %v", invoiceIDStr, result.Error)

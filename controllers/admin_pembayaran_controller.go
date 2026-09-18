@@ -48,7 +48,7 @@ func VerifikasiPembayaran(c *gin.Context) {
 	// Recalc Invoice dan status pendaftaran
 	if pembayaran.Status == helpers.PaymentVerificationDiterima ||
 		pembayaran.Status == helpers.PaymentVerificationDitolak {
-		recalcInvoiceStatus(pembayaran.InvoiceID)
+		recalcInvoiceStatus(pembayaran.NomorInvoice)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -97,7 +97,6 @@ func GetDetailPembayaran(c *gin.Context) {
 			"BuktiPembayaran": pembayaran.BuktiPembayaran,
 			"Status":          pembayaran.Status,
 			"Invoice": gin.H{
-				"ID":               pembayaran.Invoice.ID,
 				"NomorInvoice":     pembayaran.Invoice.NomorInvoice,
 				"TotalTagihan":     pembayaran.Invoice.TotalTagihan,
 				"TotalPembayaran":  pembayaran.Invoice.TotalPembayaran,

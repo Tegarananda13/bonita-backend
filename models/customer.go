@@ -3,13 +3,10 @@ package models
 import (
 	"time"
 
-	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 type Customer struct {
-	ID             uuid.UUID `gorm:"type:uuid;primaryKey"`
-	NIK            string    `gorm:"uniqueIndex"`
+	NIK            string    `gorm:"primaryKey;column:nik;not null;size:16"`
 	Nama           string
 	TempatLahir    string
 	TanggalLahir   time.Time
@@ -23,9 +20,4 @@ type Customer struct {
 	KelurahanDesa  string
 	KodePos        string
 	CreatedAt      time.Time
-}
-
-func (c *Customer) BeforeCreate(tx *gorm.DB) (err error) {
-	c.ID = uuid.New()
-	return
 }

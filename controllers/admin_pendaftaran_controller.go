@@ -13,7 +13,7 @@ import (
 // paymentStatusFromPendaftaran mengambil payment_status dari Invoice milik Pendaftaran.
 // Mengembalikan string kosong jika Invoice belum ada.
 func paymentStatusFromPendaftaran(p models.Pendaftaran) string {
-	if p.InvoiceID == nil {
+	if p.NomorInvoice == "" {
 		return helpers.PaymentBelum
 	}
 	return p.Invoice.StatusPembayaran
@@ -34,16 +34,14 @@ func GetAllPendaftaran(c *gin.Context) {
 
 	var result []gin.H
 	for _, p := range pendaftaran {
-		nomorInvoice := ""
+		nomorInvoice := p.NomorInvoice
 		totalTagihan := p.Paket.Harga
 		totalPembayaran := 0.0
-		if p.InvoiceID != nil {
-			nomorInvoice = p.Invoice.NomorInvoice
+		if p.NomorInvoice != "" {
 			totalTagihan = p.Invoice.TotalTagihan
 			totalPembayaran = p.Invoice.TotalPembayaran
 		}
 		result = append(result, gin.H{
-			"id":                  p.ID,
 			"nomor_pendaftaran":   p.NomorPendaftaran,
 			"nomor_invoice":       nomorInvoice,
 			"nama_customer":       p.Customer.Nama,
@@ -92,7 +90,6 @@ func GetPendaftaranSaya(c *gin.Context) {
 	var result []gin.H
 	for _, p := range pendaftaran {
 		result = append(result, gin.H{
-			"id":                p.ID,
 			"nomor_pendaftaran": p.NomorPendaftaran,
 			"nama_customer":     p.Customer.Nama,
 			"paket":             p.Paket.NamaPaket,
@@ -124,40 +121,37 @@ func GetDetailPendaftaran(c *gin.Context) {
 		return
 	}
 
-	// Ambil pembayaran via InvoiceID — bukan pendaftaran_id
+	// Ambil pembayaran via NomorInvoice
 	var pembayaran []models.Pembayaran
-	if pendaftaran.InvoiceID != nil {
+	if pendaftaran.NomorInvoice != "" {
 		config.DB.
-			Where("invoice_id = ?", pendaftaran.InvoiceID).
+			Where("nomor_invoice = ?", pendaftaran.NomorInvoice).
 			Order("tanggal_bayar ASC").
 			Find(&pembayaran)
 	}
 
 	var dokumen []models.Dokumen
 	config.DB.
-		Where("pendaftaran_id = ?", pendaftaran.ID).
+		Where("nomor_pendaftaran = ?", pendaftaran.NomorPendaftaran).
 		Find(&dokumen)
 
 	// Bangun payment_status dari Invoice
 	paymentStatus := models.InvoiceStatusBelumBayar
 	totalTagihan := pendaftaran.Paket.Harga
 	totalPembayaran := 0.0
-	nomorInvoice := ""
-	if pendaftaran.InvoiceID != nil {
+	nomorInvoice := pendaftaran.NomorInvoice
+	if pendaftaran.NomorInvoice != "" {
 		paymentStatus = pendaftaran.Invoice.StatusPembayaran
 		totalTagihan = pendaftaran.Invoice.TotalTagihan
 		totalPembayaran = pendaftaran.Invoice.TotalPembayaran
-		nomorInvoice = pendaftaran.Invoice.NomorInvoice
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"pendaftaran": gin.H{
-			"ID":               pendaftaran.ID,
 			"NomorPendaftaran": pendaftaran.NomorPendaftaran,
 			"Customer":         pendaftaran.Customer,
 			"Paket":            pendaftaran.Paket,
 			"User":             pendaftaran.User,
-			"InvoiceID":        pendaftaran.InvoiceID,
 			"nomor_invoice":    nomorInvoice,
 			"payment_status":   paymentStatus,
 			"total_tagihan":    totalTagihan,
@@ -176,8 +170,9 @@ func GetDetailPendaftaran(c *gin.Context) {
 }
 
 
+// AssignPendaftaran — PUT /pic/pendaftaran/:nomor/assign
 func AssignPendaftaran(c *gin.Context) {
-	pendaftaranID := c.Param("id")
+	nomor := c.Param("nomor")
 
 	userIDString := c.MustGet("user_id").(string)
 	userID, err := uuid.Parse(userIDString)
@@ -188,7 +183,8 @@ func AssignPendaftaran(c *gin.Context) {
 
 	var pendaftaran models.Pendaftaran
 	if err := config.DB.
-		First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+		Where("nomor_pendaftaran = ?", nomor).
+		First(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
 		return
 	}
@@ -207,19 +203,20 @@ func AssignPendaftaran(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Pendaftaran berhasil diambil",
 		"data": gin.H{
-			"pendaftaran_id": pendaftaran.ID,
-			"admin_id":       userID,
+			"nomor_pendaftaran": pendaftaran.NomorPendaftaran,
+			"admin_id":          userID,
 		},
 	})
 }
 
-// TandaiSelesai — PUT /pic/pendaftaran/:id/selesai
+// TandaiSelesai — PUT /pic/pendaftaran/:nomor/selesai
 func TandaiSelesai(c *gin.Context) {
-	pendaftaranID := c.Param("id")
+	nomor := c.Param("nomor")
 
 	var pendaftaran models.Pendaftaran
 	if err := config.DB.
-		First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+		Where("nomor_pendaftaran = ?", nomor).
+		First(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
 		return
 	}
@@ -238,5 +235,8 @@ func TandaiSelesai(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Jamaah berhasil ditandai selesai."})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Jamaah berhasil ditandai selesai.",
+		"data": gin.H{"nomor_pendaftaran": pendaftaran.NomorPendaftaran},
+	})
 }

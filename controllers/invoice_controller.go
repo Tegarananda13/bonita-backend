@@ -15,7 +15,7 @@ import (
 
 // GetInvoice — generate dan serve HTML invoice yang bisa di-print/save-as-PDF
 func GetInvoice(c *gin.Context) {
-	pendaftaranID := c.MustGet("pendaftaran_id")
+	nomor := c.MustGet("pendaftaran_id").(string)
 
 	// Ambil pendaftaran aktif (yang login)
 	var pendaftaran models.Pendaftaran
@@ -23,12 +23,12 @@ func GetInvoice(c *gin.Context) {
 		Preload("Customer").
 		Preload("Paket").
 		Preload("Invoice").
-		First(&pendaftaran, "id = ?", pendaftaranID).Error; err != nil {
+		Where("nomor_pendaftaran = ?", nomor).First(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
 		return
 	}
 
-	if pendaftaran.InvoiceID == nil {
+	if pendaftaran.NomorInvoice == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invoice belum tersedia."})
 		return
 	}
@@ -38,14 +38,14 @@ func GetInvoice(c *gin.Context) {
 	var semuaPendaftaran []models.Pendaftaran
 	config.DB.
 		Preload("Customer").
-		Where("invoice_id = ?", invoice.ID).
+		Where("nomor_invoice = ?", invoice.NomorInvoice).
 		Order("tanggal_daftar ASC").
 		Find(&semuaPendaftaran)
 
-	// Ambil semua pembayaran diterima via invoice_id
+	// Ambil semua pembayaran diterima via nomor_invoice
 	var pembayarans []models.Pembayaran
 	config.DB.
-		Where("invoice_id = ? AND status = ?", invoice.ID, helpers.PaymentVerificationDiterima).
+		Where("nomor_invoice = ? AND status = ?", invoice.NomorInvoice, helpers.PaymentVerificationDiterima).
 		Order("tanggal_bayar ASC").
 		Find(&pembayarans)
 

@@ -552,7 +552,6 @@ func GetDetailPaketAdmin(c *gin.Context) {
 		}
 
 		jamaahList = append(jamaahList, gin.H{
-			"id":                p.ID,
 			"nomor_pendaftaran": p.NomorPendaftaran,
 			"nama_customer":     p.Customer.Nama,
 			"pic":               picNama,

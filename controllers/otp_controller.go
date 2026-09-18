@@ -68,11 +68,11 @@ func RequestOTP(c *gin.Context) {
 
 	// simpan OTP ke database
 	otp := models.VerifikasiOTP{
-		PendaftaranID: pendaftaran.ID,
-		KodeOTP:       kode,
-		ExpiredAt:     time.Now().Add(5 * time.Minute),
-		IsUsed:        false,
-		CreatedAt:     time.Now(),
+		NomorPendaftaran: pendaftaran.NomorPendaftaran,
+		KodeOTP:          kode,
+		ExpiredAt:        time.Now().Add(5 * time.Minute),
+		IsUsed:           false,
+		CreatedAt:        time.Now(),
 	}
 
 	if err := config.DB.
@@ -155,9 +155,9 @@ func VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	// ambil OTP terbaru
+	// ambil OTP terbaru (lookup via nomor_pendaftaran)
 	if err := config.DB.
-		Where("pendaftaran_id = ?", pendaftaran.ID).
+		Where("nomor_pendaftaran = ?", pendaftaran.NomorPendaftaran).
 		Order("created_at DESC").
 		First(&otp).Error; err != nil {
 
@@ -208,10 +208,10 @@ func VerifyOTP(c *gin.Context) {
 	token := uuid.New().String()
 
 	session := models.CustomerSession{
-		PendaftaranID: pendaftaran.ID,
-		Token:         token,
-		ExpiredAt:     time.Now().Add(24 * time.Hour),
-		CreatedAt:     time.Now(),
+		NomorPendaftaran: pendaftaran.NomorPendaftaran,
+		Token:            token,
+		ExpiredAt:        time.Now().Add(24 * time.Hour),
+		CreatedAt:        time.Now(),
 	}
 
 	if err := config.DB.
