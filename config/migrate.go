@@ -152,4 +152,13 @@ func Migrate() {
 		SET batas_waktu_dp = tanggal_daftar + INTERVAL '24 hours'
 		WHERE batas_waktu_dp IS NULL OR batas_waktu_dp = '0001-01-01 00:00:00'
 	`)
+
+	// Step 11 (ManajemenAdmin): Backfill is_active untuk data user lama.
+	// AutoMigrate menambahkan kolom is_active dengan DEFAULT true, tapi baris
+	// yang sudah ada mungkin NULL. Pastikan semua user existing tetap aktif.
+	DB.Exec(`
+		UPDATE "user"
+		SET is_active = true
+		WHERE is_active IS NULL
+	`)
 }

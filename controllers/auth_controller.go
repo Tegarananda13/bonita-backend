@@ -51,6 +51,14 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	// Cek akun aktif (admin yang dinonaktifkan tidak boleh login)
+	if !user.IsActive {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "Akun Anda telah dinonaktifkan. Hubungi Owner untuk informasi lebih lanjut.",
+		})
+		return
+	}
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": user.ID,
 		"role":    user.Role,

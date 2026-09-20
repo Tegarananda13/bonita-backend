@@ -273,6 +273,13 @@ func SetupRoutes(r *gin.Engine) {
 	{
 		owner.POST("/admin", controllers.CreateAdmin)
 		owner.GET("/admin", controllers.GetAdminList)
+		owner.GET("/admin/:id", controllers.GetAdminDetail)
+		owner.PUT("/admin/:id", controllers.UpdateAdmin)
+		owner.PATCH("/admin/:id/deactivate", controllers.DeactivateAdmin)
+		owner.PATCH("/admin/:id/reactivate", controllers.ReactivateAdmin)
 		owner.DELETE("/admin/:id", controllers.DeleteAdmin)
+
+		// ── Laporan & Rekapitulasi ──
+		owner.GET("/laporan", controllers.GetLaporan)
 	}
 }
