@@ -77,6 +77,7 @@ func GetFasilitasByPaket(c *gin.Context) {
 	var fasilitas []models.DetailFasilitas
 
 	if err := config.DB.
+		Preload("FotoFasilitas", "1=1 ORDER BY urutan ASC").
 		Where("paket_id = ?", paketID).
 		Find(&fasilitas).Error; err != nil {
 
@@ -84,6 +85,10 @@ func GetFasilitasByPaket(c *gin.Context) {
 			"error": "Gagal mengambil fasilitas",
 		})
 		return
+	}
+
+	if fasilitas == nil {
+		fasilitas = []models.DetailFasilitas{}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

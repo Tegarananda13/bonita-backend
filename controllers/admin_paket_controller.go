@@ -11,6 +11,7 @@ import (
 	"bonita-backend/models"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func CreatePaket(c *gin.Context) {
@@ -101,52 +102,34 @@ func CreatePaket(c *gin.Context) {
 
 
 	// =========================
-	// Ambil foto paket
+	// Ambil foto paket (opsional — bisa diupload terpisah)
 	// =========================
 
-	file, err := c.FormFile("foto")
+	var fotoURL string
+	file, fileErr := c.FormFile("foto")
+	if fileErr == nil {
+		// buka file
+		openFile, err := file.Open()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Gagal membuka file foto",
+			})
+			return
+		}
+		defer openFile.Close()
 
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Foto paket wajib diupload",
-		})
-		return
-	}
+		// nama file unik
+		filename := fmt.Sprintf("%d_%s", time.Now().UnixNano(), file.Filename)
 
-
-	// buka file
-	openFile, err := file.Open()
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Gagal membuka file foto",
-		})
-		return
-	}
-
-	defer openFile.Close()
-
-
-	// nama file unik
-	filename := fmt.Sprintf(
-		"%d_%s",
-		time.Now().Unix(),
-		file.Filename,
-	)
-
-
-	// upload ke Supabase bucket paket
-	fotoURL, err := helpers.UploadToSupabase(
-		openFile,
-		filename,
-		"paket",
-	)
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Gagal upload foto paket",
-		})
-		return
+		// upload ke Supabase bucket paket
+		var uploadErr error
+		fotoURL, uploadErr = helpers.UploadToSupabase(openFile, filename, "paket")
+		if uploadErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Gagal upload foto paket",
+			})
+			return
+		}
 	}
 
 
@@ -176,6 +159,18 @@ func CreatePaket(c *gin.Context) {
 			"error": "Gagal membuat paket",
 		})
 		return
+	}
+
+	// Simpan foto ke tabel foto_paket jika ada foto yang diupload
+	if fotoURL != "" {
+		foto := models.FotoPaket{
+			PaketID:   paket.ID,
+			FilePath:  fotoURL,
+			Urutan:    1,
+			IsUtama:   true,
+			CreatedAt: time.Now(),
+		}
+		config.DB.Create(&foto) // best-effort; tidak batalkan create paket jika gagal
 	}
 
 
@@ -229,7 +224,9 @@ func GetPaketByID(c *gin.Context) {
 	var paket models.PaketUmroh
 
 	if err := config.DB.
+		Preload("GambarPaket", func(db *gorm.DB) *gorm.DB { return db.Order("urutan ASC") }).
 		Preload("Fasilitas").
+		Preload("Fasilitas.FotoFasilitas", func(db *gorm.DB) *gorm.DB { return db.Order("urutan ASC") }).
 		First(&paket, "id = ?", id).Error; err != nil {
 
 		c.JSON(http.StatusNotFound, gin.H{
@@ -238,8 +235,62 @@ func GetPaketByID(c *gin.Context) {
 		return
 	}
 
+	var fasilitasResp []gin.H
+	for _, f := range paket.Fasilitas {
+		var fotoFas []gin.H
+		for _, ff := range f.FotoFasilitas {
+			fotoFas = append(fotoFas, gin.H{
+				"id":     ff.ID,
+				"url":    ff.FilePath,
+				"urutan": ff.Urutan,
+			})
+		}
+		if fotoFas == nil {
+			fotoFas = []gin.H{}
+		}
+		fasilitasResp = append(fasilitasResp, gin.H{
+			"id":             f.ID,
+			"nama_fasilitas": f.NamaFasilitas,
+			"deskripsi":      f.Deskripsi,
+			"foto_fasilitas": fotoFas,
+		})
+	}
+	if fasilitasResp == nil {
+		fasilitasResp = []gin.H{}
+	}
+
+	var gambarPaketResp []gin.H
+	for _, g := range paket.GambarPaket {
+		gambarPaketResp = append(gambarPaketResp, gin.H{
+			"id":         g.ID,
+			"paket_id":   g.PaketID,
+			"file_path":  g.FilePath,
+			"url":        g.FilePath,
+			"urutan":     g.Urutan,
+			"is_utama":   g.IsUtama,
+			"is_legacy":  false,
+			"created_at": g.CreatedAt,
+		})
+	}
+	if len(gambarPaketResp) == 0 && paket.FotoPaket != "" {
+		gambarPaketResp = append(gambarPaketResp, gin.H{
+			"id":        nil,
+			"paket_id":  paket.ID,
+			"file_path": paket.FotoPaket,
+			"url":       paket.FotoPaket,
+			"urutan":    1,
+			"is_utama":  true,
+			"is_legacy": true,
+		})
+	}
+	if gambarPaketResp == nil {
+		gambarPaketResp = []gin.H{}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"paket": paket,
+		"paket":        paket,
+		"gambar_paket": gambarPaketResp,
+		"fasilitas":    fasilitasResp,
 	})
 }
 
@@ -494,7 +545,9 @@ func GetDetailPaketAdmin(c *gin.Context) {
 	var paket models.PaketUmroh
 
 	if err := config.DB.
+		Preload("GambarPaket", func(db *gorm.DB) *gorm.DB { return db.Order("urutan ASC") }).
 		Preload("Fasilitas").
+		Preload("Fasilitas.FotoFasilitas", func(db *gorm.DB) *gorm.DB { return db.Order("urutan ASC") }).
 		First(&paket, "id = ?", id).Error; err != nil {
 
 		c.JSON(http.StatusNotFound, gin.H{
@@ -570,6 +623,45 @@ func GetDetailPaketAdmin(c *gin.Context) {
 
 	isAktif := paket.TanggalBerangkat.After(time.Now())
 
+	// ── Format gambar paket ──────────────────────────────────────────────────
+	var gambarPaket []gin.H
+	for _, g := range paket.GambarPaket {
+		gambarPaket = append(gambarPaket, gin.H{
+			"id":       g.ID,
+			"url":      g.FilePath,
+			"urutan":   g.Urutan,
+			"is_utama": g.IsUtama,
+		})
+	}
+	if gambarPaket == nil {
+		gambarPaket = []gin.H{}
+	}
+
+	// ── Format fasilitas + foto ──────────────────────────────────────────────
+	var fasilitasResp []gin.H
+	for _, f := range paket.Fasilitas {
+		var fotoFas []gin.H
+		for _, ff := range f.FotoFasilitas {
+			fotoFas = append(fotoFas, gin.H{
+				"id":     ff.ID,
+				"url":    ff.FilePath,
+				"urutan": ff.Urutan,
+			})
+		}
+		if fotoFas == nil {
+			fotoFas = []gin.H{}
+		}
+		fasilitasResp = append(fasilitasResp, gin.H{
+			"id":             f.ID,
+			"nama_fasilitas": f.NamaFasilitas,
+			"deskripsi":      f.Deskripsi,
+			"foto_fasilitas": fotoFas,
+		})
+	}
+	if fasilitasResp == nil {
+		fasilitasResp = []gin.H{}
+	}
+
 	// ── Response ────────────────────────────────────────────────────────────
 	c.JSON(http.StatusOK, gin.H{
 		"paket": gin.H{
@@ -577,6 +669,7 @@ func GetDetailPaketAdmin(c *gin.Context) {
 			"nama_paket":        paket.NamaPaket,
 			"jenis_paket":       paket.JenisPaket,
 			"foto_paket":        paket.FotoPaket,
+			"gambar_paket":      gambarPaket,
 			"harga":             paket.Harga,
 			"durasi":            paket.Durasi,
 			"tanggal_berangkat": paket.TanggalBerangkat,
@@ -586,14 +679,17 @@ func GetDetailPaketAdmin(c *gin.Context) {
 			"sisa_kuota":        sisaKuota,
 			"jumlah_fasilitas":  len(paket.Fasilitas),
 			"is_aktif":          isAktif,
+			"is_active":         paket.IsActive,
+			"is_finished":       paket.IsFinished,
 		},
+		"fasilitas": fasilitasResp,
 		"statistik": gin.H{
-			"total_jamaah":       totalJamaah,
-			"jumlah_dp":          jumlahDP,
-			"jumlah_lunas":       jumlahLunas,
+			"total_jamaah":          totalJamaah,
+			"jumlah_dp":             jumlahDP,
+			"jumlah_lunas":          jumlahLunas,
 			"jumlah_siap_berangkat": jumlahSiapBerangkat,
-			"jumlah_selesai":     jumlahSelesai,
-			"jumlah_batal":       jumlahBatal,
+			"jumlah_selesai":        jumlahSelesai,
+			"jumlah_batal":          jumlahBatal,
 		},
 		"jamaah": jamaahList,
 	})

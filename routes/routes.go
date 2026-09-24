@@ -244,6 +244,17 @@ func SetupRoutes(r *gin.Engine) {
 			controllers.FinishPaket,
 		)
 
+		// ── Foto Paket ──
+		admin.POST("/paket/:id/foto", controllers.UploadFotoPaket)
+		admin.GET("/paket/:id/foto", controllers.GetFotoPaket)
+		admin.DELETE("/foto-paket/:id", controllers.DeleteFotoPaket)
+		admin.PATCH("/foto-paket/:id/utama", controllers.SetFotoUtama)
+
+		// ── Foto Fasilitas ──
+		admin.POST("/fasilitas/:id/foto", controllers.UploadFotoFasilitas)
+		admin.GET("/fasilitas/:id/foto", controllers.GetFotoFasilitas)
+		admin.DELETE("/foto-fasilitas/:id", controllers.DeleteFotoFasilitas)
+
 		// ── Pengaduan ──
 		admin.GET("/pengaduan", controllers.GetAllPengaduan)
 		admin.GET("/pengaduan/:id", controllers.GetDetailPengaduan)

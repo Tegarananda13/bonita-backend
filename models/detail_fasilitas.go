@@ -15,7 +15,8 @@ type DetailFasilitas struct {
 	CreatedAt      time.Time
 
 	// relasi
-	Paket PaketUmroh `json:"-"`
+	Paket         PaketUmroh      `json:"-"`
+	FotoFasilitas []FotoFasilitas `gorm:"foreignKey:DetailFasilitasID;references:ID" json:"foto_fasilitas,omitempty"`
 }
 
 func (d *DetailFasilitas) BeforeCreate(tx *gorm.DB) (err error) {

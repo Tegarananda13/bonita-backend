@@ -23,7 +23,8 @@
 		IsFinished        bool      `gorm:"default:false"`
 		CreatedAt         time.Time
 
-		Fasilitas []DetailFasilitas `gorm:"foreignKey:PaketID"`
+		Fasilitas   []DetailFasilitas `gorm:"foreignKey:PaketID"`
+		GambarPaket []FotoPaket       `gorm:"foreignKey:PaketID;references:ID"  json:"gambar_paket,omitempty"`
 	}
 
 	func (p *PaketUmroh) BeforeCreate(tx *gorm.DB) (err error) {

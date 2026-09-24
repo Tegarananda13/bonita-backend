@@ -69,6 +69,8 @@ func Migrate() {
 		&models.CustomerSession{},
 		&models.DetailFasilitas{},
 		&models.Pengaduan{},
+		&models.FotoPaket{},
+		&models.FotoFasilitas{},
 	)
 
 	// Step 1b: Set ulang PK eksplisit (idempoten)
@@ -160,5 +162,26 @@ func Migrate() {
 		UPDATE "user"
 		SET is_active = true
 		WHERE is_active IS NULL
+	`)
+
+	// Step 12 (FotoPaket): Backfill foto_paket string lama → tabel foto_paket baru.
+	// Untuk setiap paket_umroh yang memiliki foto_paket (string) dan belum
+	// ada entry di tabel foto_paket, masukkan sebagai foto utama (urutan=1, is_utama=true).
+	// Idempoten: hanya insert jika belum ada foto untuk paket tersebut.
+	DB.Exec(`
+		INSERT INTO foto_paket (id, paket_id, file_path, urutan, is_utama, created_at)
+		SELECT
+			gen_random_uuid(),
+			pu.id,
+			pu.foto_paket,
+			1,
+			true,
+			NOW()
+		FROM paket_umroh pu
+		WHERE pu.foto_paket IS NOT NULL
+		  AND pu.foto_paket != ''
+		  AND NOT EXISTS (
+			SELECT 1 FROM foto_paket fp WHERE fp.paket_id = pu.id
+		  )
 	`)
 }
