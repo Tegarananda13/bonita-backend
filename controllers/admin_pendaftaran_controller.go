@@ -126,13 +126,14 @@ func GetDetailPendaftaran(c *gin.Context) {
 	if pendaftaran.NomorInvoice != "" {
 		config.DB.
 			Where("nomor_invoice = ?", pendaftaran.NomorInvoice).
-			Order("tanggal_bayar ASC").
+			Order("tanggal_bayar DESC").
 			Find(&pembayaran)
 	}
 
 	var dokumen []models.Dokumen
 	config.DB.
 		Where("nomor_pendaftaran = ?", pendaftaran.NomorPendaftaran).
+		Order("created_at DESC").
 		Find(&dokumen)
 
 	// Bangun payment_status dari Invoice

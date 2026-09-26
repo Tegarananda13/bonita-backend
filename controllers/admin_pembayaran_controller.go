@@ -115,7 +115,7 @@ func GetPendingPembayaran(c *gin.Context) {
 	if err := config.DB.
 		Preload("Invoice.Pendaftaran.Customer").
 		Where("status = ?", helpers.PaymentVerificationPending).
-		Order("tanggal_bayar ASC").
+		Order("tanggal_bayar DESC").
 		Find(&pembayaran).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil pembayaran"})
 		return

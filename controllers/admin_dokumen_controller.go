@@ -192,7 +192,7 @@ func GetPendingDokumen(c *gin.Context) {
 	if err := config.DB.
 		Preload("Pendaftaran.Customer").
 		Where("status_validasi = ?", helpers.PaymentVerificationPending).
-		Order("created_at ASC").
+		Order("created_at DESC").
 		Find(&dokumen).Error; err != nil {
 
 		c.JSON(http.StatusInternalServerError, gin.H{

@@ -85,7 +85,7 @@ func GetDetailPengaduan(c *gin.Context) {
 	// Ambil data pembayaran terkait invoice pendaftaran
 	var pembayaran []models.Pembayaran
 	if pengaduan.Pendaftaran.NomorInvoice != "" {
-		config.DB.Where("nomor_invoice = ?", pengaduan.Pendaftaran.NomorInvoice).Find(&pembayaran)
+		config.DB.Where("nomor_invoice = ?", pengaduan.Pendaftaran.NomorInvoice).Order("tanggal_bayar DESC").Find(&pembayaran)
 	}
 
 	c.JSON(http.StatusOK, gin.H{

@@ -621,8 +621,6 @@ func GetDetailPaketAdmin(c *gin.Context) {
 		sisaKuota = 0
 	}
 
-	isAktif := paket.TanggalBerangkat.After(time.Now())
-
 	// ── Format gambar paket ──────────────────────────────────────────────────
 	var gambarPaket []gin.H
 	for _, g := range paket.GambarPaket {
@@ -678,7 +676,7 @@ func GetDetailPaketAdmin(c *gin.Context) {
 			"kuota_terpakai":    paket.KuotaTerpakai,
 			"sisa_kuota":        sisaKuota,
 			"jumlah_fasilitas":  len(paket.Fasilitas),
-			"is_aktif":          isAktif,
+			"is_aktif":          paket.IsActive,
 			"is_active":         paket.IsActive,
 			"is_finished":       paket.IsFinished,
 		},

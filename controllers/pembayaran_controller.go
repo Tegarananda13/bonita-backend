@@ -10,6 +10,7 @@ import (
 	"bonita-backend/models"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // recalcInvoiceStatus menghitung ulang StatusPembayaran dan TotalPembayaran
@@ -133,6 +134,9 @@ func GetCustomerDashboard(c *gin.Context) {
 	if err := config.DB.
 		Preload("Customer").
 		Preload("Paket").
+		Preload("Paket.GambarPaket", func(db *gorm.DB) *gorm.DB {
+			return db.Order("is_utama DESC, urutan ASC")
+		}).
 		Preload("Invoice").
 		Where("nomor_pendaftaran = ?", nomor).First(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
@@ -140,32 +144,111 @@ func GetCustomerDashboard(c *gin.Context) {
 	}
 
 	paymentStatus := ""
-	if pendaftaran.NomorInvoice != "" {
-		paymentStatus = pendaftaran.Invoice.StatusPembayaran
-	}
-
-	// Ambil total tagihan dari Invoice (untuk grup: harga × jumlah jamaah)
 	totalTagihanDash := pendaftaran.Paket.Harga
 	totalPembayaranDash := 0.0
 	nomorInvoiceDash := ""
+	tanggalInvoiceDash := pendaftaran.TanggalDaftar
+	totalOrangDash := 1
+
 	if pendaftaran.NomorInvoice != "" {
+		paymentStatus = pendaftaran.Invoice.StatusPembayaran
 		totalTagihanDash = pendaftaran.Invoice.TotalTagihan
 		totalPembayaranDash = pendaftaran.Invoice.TotalPembayaran
 		nomorInvoiceDash = pendaftaran.Invoice.NomorInvoice
+		if pendaftaran.Invoice.TotalOrang > 0 {
+			totalOrangDash = pendaftaran.Invoice.TotalOrang
+		} else {
+			var count int64
+			config.DB.Model(&models.Pendaftaran{}).Where("nomor_invoice = ?", pendaftaran.NomorInvoice).Count(&count)
+			if count > 0 {
+				totalOrangDash = int(count)
+			}
+		}
+		if !pendaftaran.Invoice.CreatedAt.IsZero() {
+			tanggalInvoiceDash = pendaftaran.Invoice.CreatedAt
+		}
+	}
+
+	sisaTagihanDash := totalTagihanDash - totalPembayaranDash
+	if sisaTagihanDash < 0 {
+		sisaTagihanDash = 0
+	}
+
+	fotoURL := ""
+	for _, g := range pendaftaran.Paket.GambarPaket {
+		if g.IsUtama {
+			fotoURL = g.FilePath
+			break
+		}
+	}
+	if fotoURL == "" && len(pendaftaran.Paket.GambarPaket) > 0 {
+		fotoURL = pendaftaran.Paket.GambarPaket[0].FilePath
+	}
+	if fotoURL == "" {
+		fotoURL = pendaftaran.Paket.FotoPaket
 	}
 
 	c.JSON(http.StatusOK, gin.H{
+		// Top-level legacy fields for backward compatibility
 		"nama":             pendaftaran.Customer.Nama,
 		"nomor":            pendaftaran.NomorPendaftaran,
 		"paket":            pendaftaran.Paket.NamaPaket,
 		"harga":            pendaftaran.Paket.Harga,
 		"total_tagihan":    totalTagihanDash,
 		"total_pembayaran": totalPembayaranDash,
+		"sisa_tagihan":     sisaTagihanDash,
+		"total_orang":      totalOrangDash,
 		"nomor_invoice":    nomorInvoiceDash,
 		"payment_status":   paymentStatus,
 		"document_status":  pendaftaran.DocumentStatus,
 		"status":           pendaftaran.Status,
 		"batas_waktu_dp":   pendaftaran.BatasWaktuDP,
+		"tanggal_daftar":   pendaftaran.TanggalDaftar,
+
+		// Rich nested objects
+		"customer": gin.H{
+			"nik":            pendaftaran.Customer.NIK,
+			"nama":           pendaftaran.Customer.Nama,
+			"tempat_lahir":   pendaftaran.Customer.TempatLahir,
+			"tanggal_lahir":  pendaftaran.Customer.TanggalLahir,
+			"jenis_kelamin":  pendaftaran.Customer.JenisKelamin,
+			"no_hp":          pendaftaran.Customer.NoHP,
+			"email":          pendaftaran.Customer.Email,
+			"alamat_lengkap": pendaftaran.Customer.AlamatLengkap,
+			"provinsi":       pendaftaran.Customer.Provinsi,
+			"kabupaten_kota": pendaftaran.Customer.KabupatenKota,
+			"kecamatan":      pendaftaran.Customer.Kecamatan,
+			"kelurahan_desa": pendaftaran.Customer.KelurahanDesa,
+			"kode_pos":       pendaftaran.Customer.KodePos,
+		},
+		"paket_umroh": gin.H{
+			"id":                pendaftaran.Paket.ID,
+			"nama_paket":        pendaftaran.Paket.NamaPaket,
+			"jenis_paket":       pendaftaran.Paket.JenisPaket,
+			"foto_paket":        fotoURL,
+			"harga":             pendaftaran.Paket.Harga,
+			"tanggal_berangkat": pendaftaran.Paket.TanggalBerangkat,
+			"durasi":            pendaftaran.Paket.Durasi,
+			"deskripsi":         pendaftaran.Paket.Deskripsi,
+		},
+		"pendaftaran": gin.H{
+			"nomor_pendaftaran": pendaftaran.NomorPendaftaran,
+			"tanggal_daftar":    pendaftaran.TanggalDaftar,
+			"status":            pendaftaran.Status,
+			"payment_status":    paymentStatus,
+			"document_status":   pendaftaran.DocumentStatus,
+			"batas_waktu_dp":    pendaftaran.BatasWaktuDP,
+			"total_orang":       totalOrangDash,
+		},
+		"invoice": gin.H{
+			"nomor_invoice":     nomorInvoiceDash,
+			"tanggal_invoice":   tanggalInvoiceDash,
+			"status_pembayaran": paymentStatus,
+			"total_orang":       totalOrangDash,
+			"total_tagihan":     totalTagihanDash,
+			"total_pembayaran":  totalPembayaranDash,
+			"sisa_tagihan":      sisaTagihanDash,
+		},
 	})
 }
 
