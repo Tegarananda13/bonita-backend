@@ -4,23 +4,40 @@ import (
 	"bonita-backend/models"
 	"fmt"
 	"time"
+	"math/big"
+	"crypto/rand"
 
 	"gorm.io/gorm"
 )
 
 func GenerateNomorInvoice(db *gorm.DB) (string, error) {
-	year := time.Now().Year()
+    year := time.Now().Year()
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-	var count int64
+    for {
+        code := make([]byte, 6)
 
-	if err := db.Model(&models.Invoice{}).
-		Where("nomor_invoice LIKE ?", fmt.Sprintf("INV-BNT-%d-%%", year)).
-		Count(&count).Error; err != nil {
-		return "", err
-	}
+        for i := range code {
+            n, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+            if err != nil {
+                return "", err
+            }
 
-	seq := count + 1
-	nomor := fmt.Sprintf("INV-BNT-%d-%06d", year, seq)
+            code[i] = chars[n.Int64()]
+        }
 
-	return nomor, nil
+        nomor := fmt.Sprintf("INV-BNT-%d-%s", year, string(code))
+
+        // Pastikan nomor belum pernah digunakan
+        var count int64
+        if err := db.Model(&models.Invoice{}).
+            Where("nomor_invoice = ?", nomor).
+            Count(&count).Error; err != nil {
+            return "", err
+        }
+
+        if count == 0 {
+            return nomor, nil
+        }
+    }
 }
