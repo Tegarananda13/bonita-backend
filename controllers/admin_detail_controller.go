@@ -17,29 +17,55 @@ import (
 // helpers internal
 // ─────────────────────────────────────────────────────────────────────────────
 
-// recalcDocumentStatus menghitung ulang document_status dari seluruh dokumen.
-// Phase 4: parameter berubah dari uuid.UUID → string (nomor_pendaftaran).
-func recalcDocumentStatus(nomorPendaftaran string) {
+// recalcDocumentStatus menghitung ulang document_status dari seluruh dokumen berdasarkan 5 status konsisten:
+// 1. belum: belum ada dokumen yang diunggah
+// 2. pending: ada dokumen yang diunggah dan sedang menunggu verifikasi admin
+// 3. revisi: seluruh dokumen terunggah sudah diverifikasi, dan ada dokumen yang ditolak
+// 4. lengkap: seluruh dokumen wajib sudah diverifikasi dan berstatus diterima
+// 5. belum_lengkap: seluruh dokumen terunggah sudah diverifikasi (diterima), tetapi persyaratan dokumen wajib belum lengkap
+func recalcDocumentStatus(nomorPendaftaran string) string {
 	requiredDocs := []string{"paspor", "ktp", "kartu_keluarga", "akta_lahir", "vaksin", "foto", "pas_foto"}
 
-
 	var dokumenList []models.Dokumen
-	config.DB.Where("nomor_pendaftaran = ?", nomorPendaftaran).Find(&dokumenList)
+	config.DB.Where("nomor_pendaftaran = ?", nomorPendaftaran).Order("created_at ASC").Find(&dokumenList)
+
+	if len(dokumenList) == 0 {
+		config.DB.
+			Model(&models.Pendaftaran{}).
+			Where("nomor_pendaftaran = ?", nomorPendaftaran).
+			Update("document_status", helpers.DocumentBelum)
+
+		helpers.UpdateStatusPendaftaran(nomorPendaftaran)
+		return helpers.DocumentBelum
+	}
 
 	docStatus := make(map[string]string)
 	for _, d := range dokumenList {
 		docStatus[d.JenisDokumen] = d.StatusValidasi
 	}
 
-	documentStatus := helpers.DocumentBelumLengkap
+	hasPending := false
+	hasDitolak := false
+
 	for _, s := range docStatus {
+		if s == helpers.PaymentVerificationPending {
+			hasPending = true
+		}
 		if s == helpers.PaymentVerificationDitolak {
-			documentStatus = helpers.DocumentRevisi
-			break
+			hasDitolak = true
 		}
 	}
 
-	if documentStatus != helpers.DocumentRevisi {
+	var documentStatus string
+
+	if hasPending {
+		// Menunggu verifikasi admin atas dokumen yang baru diupload / revisi
+		documentStatus = helpers.DocumentPending
+	} else if hasDitolak {
+		// Admin telah memeriksa dan ada dokumen yang ditolak (perlu revisi)
+		documentStatus = helpers.DocumentRevisi
+	} else {
+		// Tidak ada yang pending maupun ditolak, periksa kelengkapan seluruh dokumen wajib
 		allComplete := true
 		for _, doc := range requiredDocs {
 			s, exists := docStatus[doc]
@@ -50,11 +76,9 @@ func recalcDocumentStatus(nomorPendaftaran string) {
 		}
 		if allComplete {
 			documentStatus = helpers.DocumentLengkap
+		} else {
+			documentStatus = helpers.DocumentBelumLengkap
 		}
-	}
-
-	if len(dokumenList) == 0 {
-		documentStatus = helpers.DocumentBelum
 	}
 
 	config.DB.
@@ -63,6 +87,7 @@ func recalcDocumentStatus(nomorPendaftaran string) {
 		Update("document_status", documentStatus)
 
 	helpers.UpdateStatusPendaftaran(nomorPendaftaran)
+	return documentStatus
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

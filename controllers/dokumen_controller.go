@@ -118,6 +118,9 @@ func UploadDokumen(c *gin.Context) {
 		return
 	}
 
+	// Update status pendaftaran menjadi pending (menunggu verifikasi admin)
+	recalcDocumentStatus(pendaftaran.NomorPendaftaran)
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Dokumen berhasil diupload",
 		"data": gin.H{

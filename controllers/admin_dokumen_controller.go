@@ -60,86 +60,8 @@ func VerifikasiDokumen(c *gin.Context) {
 		return
 	}
 
-	// 🔥 AMBIL SEMUA DOKUMEN PENDAFTARAN
-	var dokumenList []models.Dokumen
-
-	if err := config.DB.
-		Where("nomor_pendaftaran = ?", dokumen.NomorPendaftaran).
-		Find(&dokumenList).Error; err != nil {
-
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Gagal mengambil dokumen",
-		})
-		return
-	}
-
-	// 🔥 DOKUMEN WAJIB
-	requiredDocs := []string{
-		"paspor",
-		"ktp",
-		"kartu_keluarga",
-		"akta_lahir",
-		"vaksin",
-		"foto",
-		"pas_foto",
-	}
-
-	// map untuk cek dokumen
-	docStatus := make(map[string]string)
-
-	for _, d := range dokumenList {
-
-		docStatus[d.JenisDokumen] = d.StatusValidasi
-	}
-
-	// default status
-	documentStatus := helpers.DocumentBelumLengkap
-
-	// cek apakah ada yang ditolak
-	for _, status := range docStatus {
-
-		if status == helpers.PaymentVerificationDitolak {
-
-			documentStatus = helpers.DocumentRevisi
-			break
-		}
-	}
-
-	// cek apakah semua dokumen wajib sudah diterima
-	if documentStatus != helpers.DocumentRevisi {
-
-		allComplete := true
-
-		for _, doc := range requiredDocs {
-
-			status, exists := docStatus[doc]
-
-			if !exists || status != helpers.PaymentVerificationDiterima {
-
-				allComplete = false
-				break
-			}
-		}
-
-		if allComplete {
-
-			documentStatus = helpers.DocumentLengkap
-		}
-	}
-
-	// 🔥 UPDATE STATUS DI PENDAFTARAN
-	if err := config.DB.
-		Where("nomor_pendaftaran = ?", dokumen.NomorPendaftaran).First(&models.Pendaftaran{}).Error; err == nil {
-
-		// Gunakan empty struct + WHERE agar GORM tidak melakukan cascade
-		// upsert ke Paket melalui association Pendaftaran.
-		config.DB.
-			Model(&models.Pendaftaran{}).
-			Where("nomor_pendaftaran = ?", dokumen.NomorPendaftaran).
-			Update("document_status", documentStatus)
-
-		helpers.UpdateStatusPendaftaran(dokumen.NomorPendaftaran)
-	}
+	// Hitung ulang status pendaftaran dengan logika 5 status
+	documentStatus := recalcDocumentStatus(dokumen.NomorPendaftaran)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Status dokumen berhasil diupdate",
