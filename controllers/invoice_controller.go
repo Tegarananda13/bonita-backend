@@ -81,24 +81,7 @@ func GetInvoice(c *gin.Context) {
 		))
 	}
 
-	var jamaahHTML strings.Builder
-	var jumlahAmbilPerlengkapan int
-	for i, pd := range semuaPendaftaran {
-		perlengkapanInfo := ""
-		if pd.AmbilPerlengkapan {
-			jumlahAmbilPerlengkapan++
-			perlengkapanInfo = fmt.Sprintf(
-				"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Perlengkapan %d</div><div class=\"inv-info-val\" style=\"color:#059669\">✓ Rp %s</div></div>",
-				i+1, formatRupiah(pd.HargaPerlengkapan),
-			)
-		}
-		jamaahHTML.WriteString(fmt.Sprintf(
-			"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Jamaah %d</div><div class=\"inv-info-val\">%s</div></div>"+
-			"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Nomor UMR %d</div><div class=\"inv-info-val\" style=\"font-family:'Courier New',monospace\">%s</div></div>",
-			i+1, pd.Customer.Nama, i+1, pd.NomorPendaftaran,
-		))
-		jamaahHTML.WriteString(perlengkapanInfo)
-	}
+	jamaahHTML, jumlahAmbilPerlengkapan := buildDaftarJamaahHTML(semuaPendaftaran)
 
 	// Hitung subtotal paket (tanpa perlengkapan)
 	hargaPaketTotal := pendaftaran.Paket.Harga * float64(invoice.TotalOrang)
@@ -125,7 +108,7 @@ func GetInvoice(c *gin.Context) {
 		invoice.NomorInvoice,
 		formatTanggal(tanggalInvoice),
 		invoice.TotalOrang,
-		jamaahHTML.String(),
+		jamaahHTML,
 		pendaftaran.Paket.NamaPaket,
 		pendaftaran.Paket.Durasi,
 		formatTanggal(pendaftaran.Paket.TanggalBerangkat),
@@ -219,24 +202,7 @@ func GetInvoiceAdmin(c *gin.Context) {
 		))
 	}
 
-	var jamaahHTML strings.Builder
-	var jumlahAmbilPerlengkapan int
-	for i, pd := range semuaPendaftaran {
-		perlengkapanInfo := ""
-		if pd.AmbilPerlengkapan {
-			jumlahAmbilPerlengkapan++
-			perlengkapanInfo = fmt.Sprintf(
-				"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Perlengkapan %d</div><div class=\"inv-info-val\" style=\"color:#059669\">✓ Rp %s</div></div>",
-				i+1, formatRupiah(pd.HargaPerlengkapan),
-			)
-		}
-		jamaahHTML.WriteString(fmt.Sprintf(
-			"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Jamaah %d</div><div class=\"inv-info-val\">%s</div></div>"+
-				"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Nomor UMR %d</div><div class=\"inv-info-val\" style=\"font-family:'Courier New',monospace\">%s</div></div>",
-			i+1, pd.Customer.Nama, i+1, pd.NomorPendaftaran,
-		))
-		jamaahHTML.WriteString(perlengkapanInfo)
-	}
+	jamaahHTML, jumlahAmbilPerlengkapan := buildDaftarJamaahHTML(semuaPendaftaran)
 
 	hargaPaketTotal := firstPendaftaran.Paket.Harga * float64(invoice.TotalOrang)
 	totalPerlengkapan := invoice.TotalPerlengkapan
@@ -254,7 +220,7 @@ func GetInvoiceAdmin(c *gin.Context) {
 		invoice.NomorInvoice,
 		formatTanggal(tanggalInvoice),
 		invoice.TotalOrang,
-		jamaahHTML.String(),
+		jamaahHTML,
 		firstPendaftaran.Paket.NamaPaket,
 		firstPendaftaran.Paket.Durasi,
 		formatTanggal(firstPendaftaran.Paket.TanggalBerangkat),
@@ -275,7 +241,6 @@ func GetInvoiceAdmin(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"invoice-%s.html\"", invoice.NomorInvoice))
 	c.String(http.StatusOK, html)
 }
-
 
 func formatRupiah(amount float64) string {
 	// Format angka dengan titik ribuan
@@ -306,6 +271,48 @@ func statusIcon(s string) string {
 	default:
 		return "⏳"
 	}
+}
+
+// buildDaftarJamaahHTML membangun HTML daftar jamaah dengan blok per jamaah
+// dan menghitung berapa banyak jamaah yang mengambil perlengkapan.
+func buildDaftarJamaahHTML(semuaPendaftaran []models.Pendaftaran) (string, int) {
+	var jamaahHTML strings.Builder
+	var jumlahAmbilPerlengkapan int
+
+	for i, pd := range semuaPendaftaran {
+		jamaahHTML.WriteString(fmt.Sprintf(`
+			<div class="inv-jamaah-block">
+				<div class="inv-info-item">
+					<div class="inv-info-label">Jamaah %d</div>
+					<div class="inv-info-val">%s</div>
+				</div>
+				<div class="inv-info-item">
+					<div class="inv-info-label">Nomor UMR Jamaah %d</div>
+					<div class="inv-info-val" style="font-family:'Courier New',monospace">%s</div>
+				</div>`,
+			i+1, pd.Customer.Nama,
+			i+1, pd.NomorPendaftaran,
+		))
+
+		if pd.AmbilPerlengkapan {
+			jumlahAmbilPerlengkapan++
+			jamaahHTML.WriteString(fmt.Sprintf(`
+				<div class="inv-info-item">
+					<div class="inv-info-label">Perlengkapan Jamaah %d</div>
+					<div class="inv-info-val" style="color:#059669">
+						✓ Rp %s
+					</div>
+				</div>`,
+				i+1, formatRupiah(pd.HargaPerlengkapan),
+			))
+		}
+
+		jamaahHTML.WriteString(`
+			</div>
+		`)
+	}
+
+	return jamaahHTML.String(), jumlahAmbilPerlengkapan
 }
 
 // buildInvoiceHTML membangun HTML invoice dengan template lengkap.
@@ -349,7 +356,10 @@ body{font-family:'Inter',sans-serif;background:#f0f4f8;display:flex;justify-cont
 .inv-body{padding:2rem 2.5rem}
 .inv-section{margin-bottom:1.75rem}
 .inv-section-title{font-size:.72rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.1em;margin-bottom:1rem;padding-bottom:.5rem;border-bottom:1.5px solid #f1f5f9}
-.inv-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem 2rem}
+.inv-info-grid{display:flex;flex-direction:column;gap:1.25rem;}
+.inv-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem 2rem;}
+.inv-jamaah-block{display:grid;grid-template-columns:1fr 1fr;gap:.75rem 2rem;padding-bottom:1rem;border-bottom:1px solid #f1f5f9;}
+.inv-jamaah-block:last-child{border-bottom:none;padding-bottom:0;}
 .inv-info-label{font-size:.72rem;color:#94a3b8;font-weight:500;margin-bottom:.2rem}
 .inv-info-val{font-size:.88rem;color:#1e293b;font-weight:600}
 .inv-total-card{background:linear-gradient(135deg,#0a2e1c,#1a5c3d);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1.75rem;display:flex;justify-content:space-between;align-items:center}
@@ -379,6 +389,7 @@ body{font-family:'Inter',sans-serif;background:#f0f4f8;display:flex;justify-cont
 .close-btn{display:inline-flex;align-items:center;gap:.4rem;padding:.75rem 1.5rem;background:#f1f5f9;color:#475569;border:1.5px solid #e2e8f0;border-radius:10px;font-size:.9rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;text-decoration:none}
 .inv-grand-total{background:linear-gradient(135deg,#0a2e1c,#1a5c3d);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1.75rem;display:flex;justify-content:space-between;align-items:center}
 @media print{body{background:#fff;padding:0}.invoice-wrapper{box-shadow:none;border-radius:0;max-width:100%%}.print-btn-row{display:none}}
+@media (max-width:600px){.inv-jamaah-block,.inv-detail-grid{grid-template-columns:1fr;gap:.5rem;}}
 </style></head><body><div class="invoice-wrapper">
 <div class="inv-header">
   <div class="inv-brand"><div class="inv-brand-icon">🕌</div><div><div class="inv-brand-name">Bonita</div><div class="inv-brand-tagline">Umrah • Haji • Muslim Tours</div></div></div>
@@ -386,7 +397,7 @@ body{font-family:'Inter',sans-serif;background:#f0f4f8;display:flex;justify-cont
 </div>
 <div class="inv-body">
   <div class="inv-section"><div class="inv-section-title">Daftar Jamaah (%d Orang)</div><div class="inv-info-grid">%s</div></div>
-  <div class="inv-section"><div class="inv-section-title">Detail Paket</div><div class="inv-info-grid">
+  <div class="inv-section"><div class="inv-section-title">Detail Paket</div><div class="inv-info-grid inv-detail-grid">
     <div class="inv-info-item"><div class="inv-info-label">Nama Paket</div><div class="inv-info-val">%s</div></div>
     <div class="inv-info-item"><div class="inv-info-label">Durasi</div><div class="inv-info-val">%d Hari</div></div>
     <div class="inv-info-item"><div class="inv-info-label">Tanggal Berangkat</div><div class="inv-info-val">%s</div></div>

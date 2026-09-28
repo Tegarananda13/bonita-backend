@@ -61,6 +61,7 @@ func Login(c *gin.Context) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": user.ID,
+		"nama":    user.Nama,
 		"role":    user.Role,
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	})
@@ -70,5 +71,32 @@ func Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"token": tokenString,
 		"role":  user.Role,
+		"nama":  user.Nama,
+	})
+}
+
+// GetMe mengembalikan data profil user/admin yang sedang login
+func GetMe(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var user models.User
+	if err := config.DB.Select("id, nama, username, role, no_hp, email, is_active, created_at").First(&user, "id = ?", userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User tidak ditemukan"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":         user.ID,
+		"nama":       user.Nama,
+		"username":   user.Username,
+		"role":       user.Role,
+		"no_hp":      user.NoHP,
+		"email":      user.Email,
+		"is_active":  user.IsActive,
+		"created_at": user.CreatedAt,
 	})
 }

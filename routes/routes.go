@@ -109,6 +109,11 @@ func SetupRoutes(r *gin.Engine) {
 
 	{
 		admin.GET(
+			"/me",
+			controllers.GetMe,
+		)
+
+		admin.GET(
 			"/dashboard",
 			controllers.GetDashboard,
 		)
