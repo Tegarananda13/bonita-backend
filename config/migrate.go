@@ -184,4 +184,22 @@ func Migrate() {
 			SELECT 1 FROM foto_paket fp WHERE fp.paket_id = pu.id
 		  )
 	`)
+
+	// Step 13 (Perlengkapan): Backfill kolom baru.
+	// Idempoten — hanya mengisi baris yang masih NULL.
+	DB.Exec(`
+		UPDATE pendaftaran
+		SET ambil_perlengkapan = false
+		WHERE ambil_perlengkapan IS NULL
+	`)
+	DB.Exec(`
+		UPDATE pendaftaran
+		SET harga_perlengkapan = 0
+		WHERE harga_perlengkapan IS NULL
+	`)
+	DB.Exec(`
+		UPDATE invoice
+		SET total_perlengkapan = 0
+		WHERE total_perlengkapan IS NULL
+	`)
 }

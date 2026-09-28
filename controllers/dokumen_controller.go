@@ -21,6 +21,38 @@ func UploadDokumen(c *gin.Context) {
 		return
 	}
 
+	// ── Validasi Hak Akses: Jamaah dilarang mengunggah dokumen perjalanan ──
+	travelDocs := map[string]bool{
+		"visa":          true,
+		"tiket_pesawat": true,
+		"nusuk":         true,
+	}
+	if travelDocs[jenis] {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "Dokumen perjalanan (visa, tiket pesawat, nusuk) hanya dapat diunggah oleh pihak admin",
+		})
+		return
+	}
+
+	// Validasi jenis dokumen persyaratan yang diizinkan untuk diunggah jamaah
+	allowedCustomerDocs := map[string]bool{
+		"paspor":         true,
+		"ktp":            true,
+		"kartu_keluarga": true,
+		"akta_lahir":     true,
+		"akte_kelahiran": true,
+		"vaksin":         true,
+		"foto":           true,
+		"pas_foto":       true,
+		"lainnya":        true,
+	}
+	if !allowedCustomerDocs[jenis] {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Jenis dokumen tidak valid untuk diunggah jamaah",
+		})
+		return
+	}
+
 	// ambil pendaftaran dari customer token
 	nomor := c.MustGet("pendaftaran_id").(string)
 
@@ -113,16 +145,35 @@ func GetDokumen(c *gin.Context) {
 	}
 
 	var result []gin.H
+	var persyaratan []gin.H
+	var perjalanan []gin.H
+
+	travelDocs := map[string]bool{
+		"visa":          true,
+		"tiket_pesawat": true,
+		"nusuk":         true,
+	}
+
 	for _, d := range dokumen {
-		result = append(result, gin.H{
+		item := gin.H{
 			"id":          d.ID,
 			"jenis":       d.JenisDokumen,
 			"status":      d.StatusValidasi,
 			"file":        d.FilePath,
 			"uploaded_at": d.CreatedAt,
-		})
+		}
+		result = append(result, item)
+		if travelDocs[d.JenisDokumen] {
+			perjalanan = append(perjalanan, item)
+		} else {
+			persyaratan = append(persyaratan, item)
+		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"dokumen": result})
+	c.JSON(http.StatusOK, gin.H{
+		"dokumen":             result,
+		"dokumen_persyaratan": persyaratan,
+		"dokumen_perjalanan":  perjalanan,
+	})
 }
 

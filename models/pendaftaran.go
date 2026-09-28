@@ -16,10 +16,12 @@ type Pendaftaran struct {
 	NomorInvoice       string     `gorm:"column:nomor_invoice;not null"` // FK ke Invoice.nomor_invoice
 	DocumentStatus     string
 	Status             string
-	RegistrationSource string     `gorm:"default:'customer'"` // "customer" | "admin" | "chatbot"
-	RegisteredBy       string     `gorm:"default:'Self'"`     // "Self" | nama admin | "AI Chatbot"
-	TanggalDaftar      time.Time
-	BatasWaktuDP       time.Time  // deadline untuk pembayaran DP
+	RegistrationSource  string     `gorm:"default:'customer'"` // "customer" | "admin" | "chatbot"
+	RegisteredBy        string     `gorm:"default:'Self'"`     // "Self" | nama admin | "AI Chatbot"
+	AmbilPerlengkapan   bool       `gorm:"default:false"`      // true jika jamaah memilih perlengkapan tambahan
+	HargaPerlengkapan   float64    `gorm:"default:0"`          // snapshot harga perlengkapan saat pendaftaran
+	TanggalDaftar       time.Time
+	BatasWaktuDP        time.Time  // deadline untuk pembayaran DP
 
 	// Relasi
 	Customer Customer   `gorm:"foreignKey:CustomerNIK;references:NIK"`

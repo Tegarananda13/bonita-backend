@@ -82,12 +82,43 @@ func GetInvoice(c *gin.Context) {
 	}
 
 	var jamaahHTML strings.Builder
+	var jumlahAmbilPerlengkapan int
 	for i, pd := range semuaPendaftaran {
+		perlengkapanInfo := ""
+		if pd.AmbilPerlengkapan {
+			jumlahAmbilPerlengkapan++
+			perlengkapanInfo = fmt.Sprintf(
+				"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Perlengkapan %d</div><div class=\"inv-info-val\" style=\"color:#059669\">✓ Rp %s</div></div>",
+				i+1, formatRupiah(pd.HargaPerlengkapan),
+			)
+		}
 		jamaahHTML.WriteString(fmt.Sprintf(
 			"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Jamaah %d</div><div class=\"inv-info-val\">%s</div></div>"+
 			"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Nomor UMR %d</div><div class=\"inv-info-val\" style=\"font-family:'Courier New',monospace\">%s</div></div>",
 			i+1, pd.Customer.Nama, i+1, pd.NomorPendaftaran,
 		))
+		jamaahHTML.WriteString(perlengkapanInfo)
+	}
+
+	// Hitung subtotal paket (tanpa perlengkapan)
+	hargaPaketTotal := pendaftaran.Paket.Harga * float64(invoice.TotalOrang)
+	totalPerlengkapan := invoice.TotalPerlengkapan
+
+	// Bangun HTML perlengkapan untuk invoice
+	var perlengkapanHTML string
+	if totalPerlengkapan > 0 {
+		perlengkapanHTML = fmt.Sprintf(
+			"<div class=\"inv-total-card\" style=\";margin-bottom:0.75rem\"><div><div class=\"inv-total-label\">🧳 Perlengkapan Tambahan Jamaah</div><div class=\"inv-total-meta\">%d jamaah × Rp %s</div></div><div class=\"inv-total-amount\">Rp %s</div></div>",
+			jumlahAmbilPerlengkapan, formatRupiah(pendaftaran.Paket.Harga), formatRupiah(totalPerlengkapan),
+		)
+		// Fix: use actual harga perlengkapan per orang, not paket harga
+		if jumlahAmbilPerlengkapan > 0 {
+			hargaPerlPerOrang := totalPerlengkapan / float64(jumlahAmbilPerlengkapan)
+			perlengkapanHTML = fmt.Sprintf(
+				"<div class=\"inv-total-card\" style=\"background:linear-gradient(135deg,#1e3a5f,#2563eb);margin-bottom:0.75rem\"><div><div class=\"inv-total-label\">🧳 Perlengkapan Tambahan Jamaah</div><div class=\"inv-total-meta\">%d jamaah × Rp %s</div></div><div class=\"inv-total-amount\">Rp %s</div></div>",
+				jumlahAmbilPerlengkapan, formatRupiah(hargaPerlPerOrang), formatRupiah(totalPerlengkapan),
+			)
+		}
 	}
 
 	html := buildInvoiceHTML(
@@ -101,6 +132,8 @@ func GetInvoice(c *gin.Context) {
 		formatRupiah(pendaftaran.Paket.Harga),
 		invoice.TotalOrang,
 		formatRupiah(pendaftaran.Paket.Harga),
+		formatRupiah(hargaPaketTotal),
+		perlengkapanHTML,
 		formatRupiah(invoice.TotalTagihan),
 		riwayatHTML.String(),
 		formatRupiah(totalDibayar),
@@ -114,8 +147,135 @@ func GetInvoice(c *gin.Context) {
 	c.String(http.StatusOK, html)
 }
 
+// GetInvoiceAdmin — GET /admin/invoice?nomor=INV-xxx
+// Sama dengan GetInvoice tapi diakses via admin token menggunakan query param nomor_invoice.
+func GetInvoiceAdmin(c *gin.Context) {
+	nomorInvoice := c.Query("nomor")
+	if nomorInvoice == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "nomor invoice wajib diisi"})
+		return
+	}
 
-// ── helpers lokal ──
+	// Ambil invoice
+	var invoice models.Invoice
+	if err := config.DB.Where("nomor_invoice = ?", nomorInvoice).First(&invoice).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Invoice tidak ditemukan"})
+		return
+	}
+
+	// Ambil semua pendaftaran dalam invoice ini
+	var semuaPendaftaran []models.Pendaftaran
+	config.DB.
+		Preload("Customer").
+		Preload("Paket").
+		Where("nomor_invoice = ?", nomorInvoice).
+		Order("tanggal_daftar ASC").
+		Find(&semuaPendaftaran)
+
+	if len(semuaPendaftaran) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
+		return
+	}
+
+	// Paket dari pendaftaran pertama (semua memiliki paket yang sama)
+	firstPendaftaran := semuaPendaftaran[0]
+
+	// Ambil semua pembayaran diterima
+	var pembayarans []models.Pembayaran
+	config.DB.
+		Where("nomor_invoice = ? AND status = ?", nomorInvoice, helpers.PaymentVerificationDiterima).
+		Order("tanggal_bayar ASC").
+		Find(&pembayarans)
+
+	var totalDibayar float64
+	for _, p := range pembayarans {
+		totalDibayar += p.Jumlah
+	}
+
+	statusBayar := "BELUM LUNAS"
+	statusClass := "status-pending"
+	if invoice.StatusPembayaran == models.InvoiceStatusLunas {
+		statusBayar = "LUNAS"
+		statusClass = "status-lunas"
+	} else if totalDibayar > 0 {
+		statusBayar = "DP / CICILAN"
+		statusClass = "status-dp"
+	}
+
+	tanggalInvoice := firstPendaftaran.TanggalDaftar
+	if len(pembayarans) > 0 {
+		tanggalInvoice = pembayarans[0].TanggalBayar
+	}
+
+	var riwayatHTML strings.Builder
+	for i, p := range pembayarans {
+		label := "DP"
+		if i > 0 {
+			label = fmt.Sprintf("Pembayaran %d", i+1)
+		}
+		riwayatHTML.WriteString(fmt.Sprintf(
+			"<tr><td class=\"tbl-date\">%s</td><td class=\"tbl-label\">%s</td><td class=\"tbl-amount\">Rp %s</td></tr>",
+			p.TanggalBayar.Format("02 January 2006"), label, formatRupiah(p.Jumlah),
+		))
+	}
+
+	var jamaahHTML strings.Builder
+	var jumlahAmbilPerlengkapan int
+	for i, pd := range semuaPendaftaran {
+		perlengkapanInfo := ""
+		if pd.AmbilPerlengkapan {
+			jumlahAmbilPerlengkapan++
+			perlengkapanInfo = fmt.Sprintf(
+				"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Perlengkapan %d</div><div class=\"inv-info-val\" style=\"color:#059669\">✓ Rp %s</div></div>",
+				i+1, formatRupiah(pd.HargaPerlengkapan),
+			)
+		}
+		jamaahHTML.WriteString(fmt.Sprintf(
+			"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Jamaah %d</div><div class=\"inv-info-val\">%s</div></div>"+
+				"<div class=\"inv-info-item\"><div class=\"inv-info-label\">Nomor UMR %d</div><div class=\"inv-info-val\" style=\"font-family:'Courier New',monospace\">%s</div></div>",
+			i+1, pd.Customer.Nama, i+1, pd.NomorPendaftaran,
+		))
+		jamaahHTML.WriteString(perlengkapanInfo)
+	}
+
+	hargaPaketTotal := firstPendaftaran.Paket.Harga * float64(invoice.TotalOrang)
+	totalPerlengkapan := invoice.TotalPerlengkapan
+
+	var perlengkapanHTML string
+	if totalPerlengkapan > 0 && jumlahAmbilPerlengkapan > 0 {
+		hargaPerlPerOrang := totalPerlengkapan / float64(jumlahAmbilPerlengkapan)
+		perlengkapanHTML = fmt.Sprintf(
+			"<div class=\"inv-total-card\" style=\"background:linear-gradient(135deg,#0a2e1c,#1a5c3d);margin-bottom:0.75rem\"><div><div class=\"inv-total-label\">🧳 Perlengkapan Tambahan Jamaah</div><div class=\"inv-total-meta\">%d jamaah × Rp %s</div></div><div class=\"inv-total-amount\">Rp %s</div></div>",
+			jumlahAmbilPerlengkapan, formatRupiah(hargaPerlPerOrang), formatRupiah(totalPerlengkapan),
+		)
+	}
+
+	html := buildInvoiceHTML(
+		invoice.NomorInvoice,
+		formatTanggal(tanggalInvoice),
+		invoice.TotalOrang,
+		jamaahHTML.String(),
+		firstPendaftaran.Paket.NamaPaket,
+		firstPendaftaran.Paket.Durasi,
+		formatTanggal(firstPendaftaran.Paket.TanggalBerangkat),
+		formatRupiah(firstPendaftaran.Paket.Harga),
+		invoice.TotalOrang,
+		formatRupiah(firstPendaftaran.Paket.Harga),
+		formatRupiah(hargaPaketTotal),
+		perlengkapanHTML,
+		formatRupiah(invoice.TotalTagihan),
+		riwayatHTML.String(),
+		formatRupiah(totalDibayar),
+		statusClass,
+		statusIcon(statusBayar),
+		statusBayar,
+	)
+
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"invoice-%s.html\"", invoice.NomorInvoice))
+	c.String(http.StatusOK, html)
+}
+
 
 func formatRupiah(amount float64) string {
 	// Format angka dengan titik ribuan
@@ -160,6 +320,8 @@ func buildInvoiceHTML(
 	hargaPerOrang string,
 	jumlahOrang int,
 	hargaPerOrangAlt string,
+	subtotalPaket string,
+	perlengkapanHTML string,
 	totalTagihan string,
 	riwayatHTML string,
 	totalDibayar string,
@@ -215,6 +377,7 @@ body{font-family:'Inter',sans-serif;background:#f0f4f8;display:flex;justify-cont
 .print-btn-row{display:flex;justify-content:center;gap:1rem;padding:1.5rem;background:#f8fafc}
 .print-btn{display:inline-flex;align-items:center;gap:.4rem;padding:.75rem 1.75rem;background:linear-gradient(135deg,#0a2e1c,#1a5c3d);color:#fff;border:none;border-radius:10px;font-size:.9rem;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer}
 .close-btn{display:inline-flex;align-items:center;gap:.4rem;padding:.75rem 1.5rem;background:#f1f5f9;color:#475569;border:1.5px solid #e2e8f0;border-radius:10px;font-size:.9rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;text-decoration:none}
+.inv-grand-total{background:linear-gradient(135deg,#0a2e1c,#1a5c3d);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1.75rem;display:flex;justify-content:space-between;align-items:center}
 @media print{body{background:#fff;padding:0}.invoice-wrapper{box-shadow:none;border-radius:0;max-width:100%%}.print-btn-row{display:none}}
 </style></head><body><div class="invoice-wrapper">
 <div class="inv-header">
@@ -230,8 +393,13 @@ body{font-family:'Inter',sans-serif;background:#f0f4f8;display:flex;justify-cont
     <div class="inv-info-item"><div class="inv-info-label">Harga per Orang</div><div class="inv-info-val">Rp %s</div></div>
   </div></div>
   <div class="inv-total-card">
-    <div><div class="inv-total-label">💰 Total Tagihan</div><div class="inv-total-meta">%d orang × Rp %s</div></div>
+    <div><div class="inv-total-label">💰 Harga Paket</div><div class="inv-total-meta">%d orang × Rp %s</div></div>
     <div class="inv-total-amount">Rp %s</div>
+  </div>
+  %s
+  <div class="inv-grand-total">
+    <div><div class="inv-total-label" style="font-size:.95rem">💰 Total Tagihan</div></div>
+    <div class="inv-total-amount" style="font-size:1.6rem">Rp %s</div>
   </div>
   <div class="inv-section"><div class="inv-section-title">Riwayat Pembayaran</div>
     <table class="inv-table"><thead><tr><th>Tanggal</th><th>Keterangan</th><th>Jumlah</th></tr></thead><tbody>%s</tbody></table>
@@ -246,7 +414,9 @@ body{font-family:'Inter',sans-serif;background:#f0f4f8;display:flex;justify-cont
 		nomorInvoice, tanggal,
 		totalOrang, jamaahHTML,
 		namaPaket, durasi, tanggalBerangkat, hargaPerOrang,
-		jumlahOrang, hargaPerOrangAlt, totalTagihan,
+		jumlahOrang, hargaPerOrangAlt, subtotalPaket,
+		perlengkapanHTML,
+		totalTagihan,
 		riwayatHTML, totalDibayar,
 		statusClass, statusIco, statusLabel,
 	)

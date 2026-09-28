@@ -9,10 +9,10 @@ const (
 	PaymentVerificationDiterima = "diterima"
 	PaymentVerificationDitolak  = "ditolak"
 
-	DocumentBelum   = "belum"
-	DocumentPending = "pending"
-	DocumentRevisi = "revisi"
-	DocumentLengkap = "lengkap"
+	DocumentBelum        = "belum"
+	DocumentBelumLengkap = "belum_lengkap"
+	DocumentRevisi       = "revisi"
+	DocumentLengkap      = "lengkap"
 
 	StatusProses             = "proses"
 	StatusMenungguDokumen    = "menunggu_dokumen"
@@ -25,4 +25,7 @@ const (
 	PengaduanMenunggu  = "menunggu"
 	PengaduanDiproses  = "diproses"
 	PengaduanSelesai   = "selesai"
+
+	// Perlengkapan tambahan jamaah — harga default per jamaah
+	DefaultHargaPerlengkapan = 1_450_000
 )

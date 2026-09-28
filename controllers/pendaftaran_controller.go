@@ -52,19 +52,20 @@ func resolveRegistrationSource(c *gin.Context, source string) (string, string) {
 
 // JamaahRequest adalah data satu jamaah dalam request pendaftaran.
 type JamaahRequest struct {
-	NIK           string `json:"nik"            binding:"required"`
-	Nama          string `json:"nama"           binding:"required"`
-	TempatLahir   string `json:"tempat_lahir"   binding:"required"`
-	TanggalLahir  string `json:"tanggal_lahir"  binding:"required"` // YYYY-MM-DD
-	JenisKelamin  string `json:"jenis_kelamin"  binding:"required"`
-	NoHP          string `json:"no_hp"          binding:"required"`
-	Email         string `json:"email"          binding:"required"`
-	AlamatLengkap string `json:"alamat_lengkap" binding:"required"`
-	Provinsi      string `json:"provinsi"       binding:"required"`
-	KabupatenKota string `json:"kabupaten_kota" binding:"required"`
-	Kecamatan     string `json:"kecamatan"      binding:"required"`
-	KelurahanDesa string `json:"kelurahan_desa" binding:"required"`
-	KodePos       string `json:"kode_pos"       binding:"required"`
+	NIK                string `json:"nik"                 binding:"required"`
+	Nama               string `json:"nama"                binding:"required"`
+	TempatLahir        string `json:"tempat_lahir"        binding:"required"`
+	TanggalLahir       string `json:"tanggal_lahir"       binding:"required"` // YYYY-MM-DD
+	JenisKelamin       string `json:"jenis_kelamin"       binding:"required"`
+	NoHP               string `json:"no_hp"               binding:"required"`
+	Email              string `json:"email"               binding:"required"`
+	AlamatLengkap      string `json:"alamat_lengkap"      binding:"required"`
+	Provinsi           string `json:"provinsi"            binding:"required"`
+	KabupatenKota      string `json:"kabupaten_kota"      binding:"required"`
+	Kecamatan          string `json:"kecamatan"           binding:"required"`
+	KelurahanDesa      string `json:"kelurahan_desa"      binding:"required"`
+	KodePos            string `json:"kode_pos"            binding:"required"`
+	AmbilPerlengkapan  bool   `json:"ambil_perlengkapan"`
 }
 
 // CreatePendaftaranRequest mendukung satu maupun banyak jamaah.
@@ -177,14 +178,27 @@ func CreatePendaftaran(c *gin.Context) {
 		return
 	}
 
+	// ── Hitung biaya perlengkapan ────────────────────────────────────────────
+	hargaPerlengkapan := float64(helpers.DefaultHargaPerlengkapan)
+	var totalPerlengkapan float64
+	var jumlahAmbilPerlengkapan int
+	for _, j := range req.Jamaah {
+		if j.AmbilPerlengkapan {
+			totalPerlengkapan += hargaPerlengkapan
+			jumlahAmbilPerlengkapan++
+		}
+	}
+
 	// ── Buat Invoice ─────────────────────────────────────────────────────────
 	nomorInvoice, _ := helpers.GenerateNomorInvoice(config.DB)
+	hargaPaketTotal := paket.Harga * float64(jumlahJamaah)
 	invoice := models.Invoice{
-		NomorInvoice:     nomorInvoice,
-		TotalOrang:       jumlahJamaah,                 // dihitung backend
-		TotalTagihan:     paket.Harga * float64(jumlahJamaah),
-		TotalPembayaran:  0,
-		StatusPembayaran: models.InvoiceStatusBelumBayar,
+		NomorInvoice:      nomorInvoice,
+		TotalOrang:        jumlahJamaah,
+		TotalTagihan:      hargaPaketTotal + totalPerlengkapan,
+		TotalPerlengkapan: totalPerlengkapan,
+		TotalPembayaran:   0,
+		StatusPembayaran:  models.InvoiceStatusBelumBayar,
 	}
 	if err := config.DB.Create(&invoice).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membuat invoice"})
@@ -224,6 +238,12 @@ func CreatePendaftaran(c *gin.Context) {
 
 		nomor := "UMR-" + time.Now().Format("20060102150405") + "-" + j.NIK[len(j.NIK)-4:]
 
+		// Snapshot harga perlengkapan jika jamaah memilih
+		var hargaPerl float64
+		if j.AmbilPerlengkapan {
+			hargaPerl = hargaPerlengkapan
+		}
+
 		pendaftaran := models.Pendaftaran{
 			CustomerNIK:        customer.NIK, // FK ke customer.nik
 			PaketID:            paketID,
@@ -234,6 +254,8 @@ func CreatePendaftaran(c *gin.Context) {
 			Status:             helpers.StatusProses,
 			RegistrationSource: regSource,
 			RegisteredBy:       regBy,
+			AmbilPerlengkapan:  j.AmbilPerlengkapan,
+			HargaPerlengkapan:  hargaPerl,
 			TanggalDaftar:      time.Now(),
 			BatasWaktuDP:       time.Now().Add(24 * time.Hour),
 		}
@@ -257,13 +279,15 @@ func CreatePendaftaran(c *gin.Context) {
 	// ── Response ─────────────────────────────────────────────────────────────
 	batasDP := time.Now().Add(24 * time.Hour)
 	c.JSON(http.StatusCreated, gin.H{
-		"message":        "Pendaftaran berhasil",
-		"nomor_invoice":  nomorInvoice,
-		"jumlah_jamaah":  jumlahJamaah,
-		"total_tagihan":  invoice.TotalTagihan,
-		"paket":          paket.NamaPaket,
-		"pendaftaran":    results,
-		"batas_waktu_dp": batasDP,
+		"message":              "Pendaftaran berhasil",
+		"nomor_invoice":        nomorInvoice,
+		"jumlah_jamaah":        jumlahJamaah,
+		"total_tagihan":        invoice.TotalTagihan,
+		"total_perlengkapan":   totalPerlengkapan,
+		"jumlah_perlengkapan":  jumlahAmbilPerlengkapan,
+		"paket":                paket.NamaPaket,
+		"pendaftaran":          results,
+		"batas_waktu_dp":       batasDP,
 		// backward-compat: field lama tetap ada (diambil dari jamaah pertama)
 		"data": gin.H{
 			"nomor_pendaftaran": results[0].NomorPendaftaran,

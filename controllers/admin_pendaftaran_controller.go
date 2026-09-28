@@ -140,11 +140,33 @@ func GetDetailPendaftaran(c *gin.Context) {
 	paymentStatus := models.InvoiceStatusBelumBayar
 	totalTagihan := pendaftaran.Paket.Harga
 	totalPembayaran := 0.0
+	totalPerlengkapan := 0.0
 	nomorInvoice := pendaftaran.NomorInvoice
 	if pendaftaran.NomorInvoice != "" {
 		paymentStatus = pendaftaran.Invoice.StatusPembayaran
 		totalTagihan = pendaftaran.Invoice.TotalTagihan
 		totalPembayaran = pendaftaran.Invoice.TotalPembayaran
+		totalPerlengkapan = pendaftaran.Invoice.TotalPerlengkapan
+	}
+
+	// Muat SEMUA pendaftaran dalam invoice yang sama (grup jamaah)
+	var semuaPendaftaran []models.Pendaftaran
+	if pendaftaran.NomorInvoice != "" {
+		config.DB.
+			Preload("Customer").
+			Where("nomor_invoice = ?", pendaftaran.NomorInvoice).
+			Order("tanggal_daftar ASC").
+			Find(&semuaPendaftaran)
+	}
+	var grupJamaah []gin.H
+	for _, gp := range semuaPendaftaran {
+		grupJamaah = append(grupJamaah, gin.H{
+			"nomor_pendaftaran":   gp.NomorPendaftaran,
+			"nama":                gp.Customer.Nama,
+			"nik":                 gp.Customer.NIK,
+			"ambil_perlengkapan":  gp.AmbilPerlengkapan,
+			"harga_perlengkapan":  gp.HargaPerlengkapan,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -157,6 +179,9 @@ func GetDetailPendaftaran(c *gin.Context) {
 			"payment_status":   paymentStatus,
 			"total_tagihan":    totalTagihan,
 			"total_pembayaran": totalPembayaran,
+			"total_perlengkapan":   totalPerlengkapan,
+			"ambil_perlengkapan":   pendaftaran.AmbilPerlengkapan,
+			"harga_perlengkapan":   pendaftaran.HargaPerlengkapan,
 			"DocumentStatus":   pendaftaran.DocumentStatus,
 			"Status":           pendaftaran.Status,
 			"TanggalDaftar":    pendaftaran.TanggalDaftar,
@@ -165,8 +190,9 @@ func GetDetailPendaftaran(c *gin.Context) {
 			"registered_by":       pendaftaran.RegisteredBy,
 			"registered_by_label": helpers.GetRegistrationLabel(pendaftaran.RegistrationSource, pendaftaran.RegisteredBy),
 		},
-		"pembayaran": pembayaran,
-		"dokumen":    dokumen,
+		"pembayaran":   pembayaran,
+		"dokumen":      dokumen,
+		"grup_jamaah":  grupJamaah,
 	})
 }
 

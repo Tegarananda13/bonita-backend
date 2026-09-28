@@ -149,12 +149,14 @@ func GetCustomerDashboard(c *gin.Context) {
 	nomorInvoiceDash := ""
 	tanggalInvoiceDash := pendaftaran.TanggalDaftar
 	totalOrangDash := 1
+	var totalPerlengkapanDash float64
 
 	if pendaftaran.NomorInvoice != "" {
 		paymentStatus = pendaftaran.Invoice.StatusPembayaran
 		totalTagihanDash = pendaftaran.Invoice.TotalTagihan
 		totalPembayaranDash = pendaftaran.Invoice.TotalPembayaran
 		nomorInvoiceDash = pendaftaran.Invoice.NomorInvoice
+		totalPerlengkapanDash = pendaftaran.Invoice.TotalPerlengkapan
 		if pendaftaran.Invoice.TotalOrang > 0 {
 			totalOrangDash = pendaftaran.Invoice.TotalOrang
 		} else {
@@ -241,13 +243,19 @@ func GetCustomerDashboard(c *gin.Context) {
 			"total_orang":       totalOrangDash,
 		},
 		"invoice": gin.H{
-			"nomor_invoice":     nomorInvoiceDash,
-			"tanggal_invoice":   tanggalInvoiceDash,
-			"status_pembayaran": paymentStatus,
-			"total_orang":       totalOrangDash,
-			"total_tagihan":     totalTagihanDash,
-			"total_pembayaran":  totalPembayaranDash,
-			"sisa_tagihan":      sisaTagihanDash,
+			"nomor_invoice":       nomorInvoiceDash,
+			"tanggal_invoice":     tanggalInvoiceDash,
+			"status_pembayaran":   paymentStatus,
+			"total_orang":         totalOrangDash,
+			"total_tagihan":       totalTagihanDash,
+			"total_pembayaran":    totalPembayaranDash,
+			"sisa_tagihan":        sisaTagihanDash,
+			"total_perlengkapan":  totalPerlengkapanDash,
+		},
+		"perlengkapan": gin.H{
+			"ambil":  pendaftaran.AmbilPerlengkapan,
+			"harga":  pendaftaran.HargaPerlengkapan,
+			"total":  totalPerlengkapanDash,
 		},
 	})
 }

@@ -259,6 +259,7 @@ func SetupRoutes(r *gin.Engine) {
 		admin.GET("/pengaduan", controllers.GetAllPengaduan)
 		admin.GET("/pengaduan/:id", controllers.GetDetailPengaduan)
 		admin.PATCH("/pengaduan/:id/status", controllers.UpdateStatusPengaduan)
+		admin.GET("/invoice", controllers.GetInvoiceAdmin)
 
 		// ── Admin input pembayaran & dokumen dari halaman detail ──
 		admin.POST("/pendaftaran/:nomor/pembayaran", controllers.AdminCreatePembayaran)

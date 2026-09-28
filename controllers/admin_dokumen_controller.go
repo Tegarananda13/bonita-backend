@@ -77,7 +77,11 @@ func VerifikasiDokumen(c *gin.Context) {
 	requiredDocs := []string{
 		"paspor",
 		"ktp",
+		"kartu_keluarga",
+		"akta_lahir",
+		"vaksin",
 		"foto",
+		"pas_foto",
 	}
 
 	// map untuk cek dokumen
@@ -89,7 +93,7 @@ func VerifikasiDokumen(c *gin.Context) {
 	}
 
 	// default status
-	documentStatus := helpers.DocumentPending
+	documentStatus := helpers.DocumentBelumLengkap
 
 	// cek apakah ada yang ditolak
 	for _, status := range docStatus {
@@ -167,11 +171,11 @@ func GetDetailDokumen(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"dokumen": gin.H{
-			"ID":            dokumen.ID,
-			"JenisDokumen":  dokumen.JenisDokumen,
-			"FilePath":      dokumen.FilePath,
+			"ID":             dokumen.ID,
+			"JenisDokumen":   dokumen.JenisDokumen,
+			"FilePath":       dokumen.FilePath,
 			"StatusValidasi": dokumen.StatusValidasi,
-			"CreatedAt":     dokumen.CreatedAt,
+			"CreatedAt":      dokumen.CreatedAt,
 			"Pendaftaran": gin.H{
 				"NomorPendaftaran": dokumen.Pendaftaran.NomorPendaftaran,
 				"Customer": gin.H{
@@ -206,12 +210,12 @@ func GetPendingDokumen(c *gin.Context) {
 	for _, d := range dokumen {
 
 		result = append(result, gin.H{
-			"id":                 d.ID,
-			"nomor_pendaftaran":  d.Pendaftaran.NomorPendaftaran,
-			"nama_customer":      d.Pendaftaran.Customer.Nama,
-			"jenis_dokumen":      d.JenisDokumen,
-			"status":             d.StatusValidasi,
-			"tanggal_upload":     d.CreatedAt,
+			"id":                d.ID,
+			"nomor_pendaftaran": d.Pendaftaran.NomorPendaftaran,
+			"nama_customer":     d.Pendaftaran.Customer.Nama,
+			"jenis_dokumen":     d.JenisDokumen,
+			"status":            d.StatusValidasi,
+			"tanggal_upload":    d.CreatedAt,
 		})
 	}
 

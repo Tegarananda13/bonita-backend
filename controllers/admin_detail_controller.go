@@ -20,7 +20,8 @@ import (
 // recalcDocumentStatus menghitung ulang document_status dari seluruh dokumen.
 // Phase 4: parameter berubah dari uuid.UUID → string (nomor_pendaftaran).
 func recalcDocumentStatus(nomorPendaftaran string) {
-	requiredDocs := []string{"paspor", "ktp", "foto"}
+	requiredDocs := []string{"paspor", "ktp", "kartu_keluarga", "akta_lahir", "vaksin", "foto", "pas_foto"}
+
 
 	var dokumenList []models.Dokumen
 	config.DB.Where("nomor_pendaftaran = ?", nomorPendaftaran).Find(&dokumenList)
@@ -30,7 +31,7 @@ func recalcDocumentStatus(nomorPendaftaran string) {
 		docStatus[d.JenisDokumen] = d.StatusValidasi
 	}
 
-	documentStatus := helpers.DocumentPending
+	documentStatus := helpers.DocumentBelumLengkap
 	for _, s := range docStatus {
 		if s == helpers.PaymentVerificationDitolak {
 			documentStatus = helpers.DocumentRevisi
@@ -285,6 +286,37 @@ func AdminUploadDokumen(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal upload file ke Supabase"})
 		return
+	}
+
+	travelDocs := map[string]bool{
+		"visa":          true,
+		"tiket_pesawat": true,
+		"nusuk":         true,
+	}
+
+	if travelDocs[jenis] {
+		var existing models.Dokumen
+		if err := config.DB.Where("nomor_pendaftaran = ? AND jenis_dokumen = ?", pendaftaran.NomorPendaftaran, jenis).First(&existing).Error; err == nil {
+			_ = helpers.DeleteFromSupabase(existing.FilePath, "dokumen")
+			existing.FilePath = fileURL
+			existing.StatusValidasi = helpers.PaymentVerificationDiterima
+			existing.CreatedAt = time.Now()
+			if err := config.DB.Save(&existing).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui dokumen"})
+				return
+			}
+			recalcDocumentStatus(pendaftaran.NomorPendaftaran)
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Dokumen berhasil diupload",
+				"data": gin.H{
+					"id":     existing.ID,
+					"jenis":  existing.JenisDokumen,
+					"status": existing.StatusValidasi,
+					"file":   existing.FilePath,
+				},
+			})
+			return
+		}
 	}
 
 	dokumen := models.Dokumen{
