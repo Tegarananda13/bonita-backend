@@ -118,6 +118,24 @@ func SetupRoutes(r *gin.Engine) {
 			controllers.GetDashboard,
 		)
 
+		// ── Badges notifikasi admin ──
+		admin.GET(
+			"/badges",
+			controllers.GetAdminBadges,
+		)
+		admin.GET(
+			"/notifikasi/count",
+			controllers.GetAdminBadges,
+		)
+		admin.GET(
+			"/dokumen/count",
+			controllers.GetDokumenPendingCount,
+		)
+		admin.GET(
+			"/pembayaran/count",
+			controllers.GetPembayaranPendingCount,
+		)
+
 		// ── Customer (admin mendaftarkan jamaah) ──
 		admin.GET(
 			"/customer",

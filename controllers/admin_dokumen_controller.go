@@ -63,12 +63,18 @@ func VerifikasiDokumen(c *gin.Context) {
 	// Hitung ulang status pendaftaran dengan logika 5 status
 	documentStatus := recalcDocumentStatus(dokumen.NomorPendaftaran)
 
+	var countMenunggu int64
+	config.DB.Model(&models.Dokumen{}).
+		Where("status_validasi = ?", helpers.PaymentVerificationPending).
+		Count(&countMenunggu)
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Status dokumen berhasil diupdate",
 		"data": gin.H{
 			"id":              dokumen.ID,
 			"status":          dokumen.StatusValidasi,
 			"document_status": documentStatus,
+			"pending_count":   countMenunggu,
 		},
 	})
 }
@@ -141,8 +147,14 @@ func GetPendingDokumen(c *gin.Context) {
 		})
 	}
 
+	var countMenunggu int64
+	config.DB.Model(&models.Dokumen{}).
+		Where("status_validasi = ?", helpers.PaymentVerificationPending).
+		Count(&countMenunggu)
+
 	c.JSON(http.StatusOK, gin.H{
-		"total": len(result),
-		"data":  result,
+		"total":          countMenunggu,
+		"count_menunggu": countMenunggu,
+		"data":           result,
 	})
 }

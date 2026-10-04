@@ -82,6 +82,10 @@ func UploadFotoPaket(c *gin.Context) {
 		return
 	}
 
+	if isUtama {
+		config.DB.Model(&models.PaketUmroh{}).Where("id = ?", paketID).Update("foto_paket", fotoURL)
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Foto berhasil diupload",
 		"data": gin.H{
@@ -130,6 +134,9 @@ func DeleteFotoPaket(c *gin.Context) {
 			Order("urutan ASC").
 			First(&next).Error; err == nil {
 			config.DB.Model(&next).Update("is_utama", true)
+			config.DB.Model(&models.PaketUmroh{}).Where("id = ?", paketID).Update("foto_paket", next.FilePath)
+		} else {
+			config.DB.Model(&models.PaketUmroh{}).Where("id = ?", paketID).Update("foto_paket", "")
 		}
 	}
 
@@ -166,6 +173,9 @@ func SetFotoUtama(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal set foto utama"})
 		return
 	}
+
+	// Sinkronkan ke paket_umroh.foto_paket
+	config.DB.Model(&models.PaketUmroh{}).Where("id = ?", foto.PaketID).Update("foto_paket", foto.FilePath)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "Foto utama berhasil diubah",

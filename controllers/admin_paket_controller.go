@@ -202,6 +202,7 @@ func GetAllPaket(c *gin.Context) {
 	var paket []models.PaketUmroh
 
 	if err := config.DB.
+		Preload("GambarPaket", func(db *gorm.DB) *gorm.DB { return db.Order("urutan ASC") }).
 		Preload("Fasilitas").
 		Order("tanggal_berangkat ASC").
 		Find(&paket).Error; err != nil {
@@ -210,6 +211,59 @@ func GetAllPaket(c *gin.Context) {
 			"error": "Gagal mengambil paket",
 		})
 		return
+	}
+
+	// Kumpulkan ID paket
+	var paketIDs []interface{}
+	for _, p := range paket {
+		paketIDs = append(paketIDs, p.ID)
+	}
+
+	// map paketID -> URL foto utama
+	fotoUtamaMap := make(map[string]string)
+	if len(paketIDs) > 0 {
+		var fotos []models.FotoPaket
+		config.DB.
+			Where("paket_id IN ? AND is_utama = ?", paketIDs, true).
+			Find(&fotos)
+		for _, f := range fotos {
+			fotoUtamaMap[f.PaketID.String()] = f.FilePath
+		}
+
+		// fallback 1: jika paket tidak punya is_utama, ambil foto pertama berdasarkan urutan
+		var fallbacks []models.FotoPaket
+		config.DB.Raw(`
+			SELECT DISTINCT ON (paket_id) *
+			FROM foto_paket
+			WHERE paket_id IN ?
+			ORDER BY paket_id, urutan ASC
+		`, paketIDs).Scan(&fallbacks)
+		for _, f := range fallbacks {
+			id := f.PaketID.String()
+			if _, ok := fotoUtamaMap[id]; !ok {
+				fotoUtamaMap[id] = f.FilePath
+			}
+		}
+	}
+
+	for i := range paket {
+		fotoURL := fotoUtamaMap[paket[i].ID.String()]
+		if fotoURL == "" {
+			fotoURL = paket[i].FotoPaket // fallback 2: field lama FotoPaket
+		}
+		paket[i].FotoPaket = fotoURL
+
+		// Jika gambar_paket masih kosong tapi FotoPaket ada, tambahkan sebagai fallback array
+		if len(paket[i].GambarPaket) == 0 && fotoURL != "" {
+			paket[i].GambarPaket = []models.FotoPaket{
+				{
+					PaketID:  paket[i].ID,
+					FilePath: fotoURL,
+					Urutan:   1,
+					IsUtama:  true,
+				},
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -260,6 +314,7 @@ func GetPaketByID(c *gin.Context) {
 	}
 
 	var gambarPaketResp []gin.H
+	var fotoUtamaURL string
 	for _, g := range paket.GambarPaket {
 		gambarPaketResp = append(gambarPaketResp, gin.H{
 			"id":         g.ID,
@@ -271,6 +326,18 @@ func GetPaketByID(c *gin.Context) {
 			"is_legacy":  false,
 			"created_at": g.CreatedAt,
 		})
+		if g.IsUtama && fotoUtamaURL == "" {
+			fotoUtamaURL = g.FilePath
+		}
+	}
+	if fotoUtamaURL == "" && len(paket.GambarPaket) > 0 {
+		fotoUtamaURL = paket.GambarPaket[0].FilePath
+	}
+	if fotoUtamaURL == "" {
+		fotoUtamaURL = paket.FotoPaket
+	}
+	if paket.FotoPaket == "" {
+		paket.FotoPaket = fotoUtamaURL
 	}
 	if len(gambarPaketResp) == 0 && paket.FotoPaket != "" {
 		gambarPaketResp = append(gambarPaketResp, gin.H{
@@ -623,6 +690,7 @@ func GetDetailPaketAdmin(c *gin.Context) {
 
 	// ── Format gambar paket ──────────────────────────────────────────────────
 	var gambarPaket []gin.H
+	var fotoUtamaURL string
 	for _, g := range paket.GambarPaket {
 		gambarPaket = append(gambarPaket, gin.H{
 			"id":       g.ID,
@@ -630,7 +698,31 @@ func GetDetailPaketAdmin(c *gin.Context) {
 			"urutan":   g.Urutan,
 			"is_utama": g.IsUtama,
 		})
+		if g.IsUtama && fotoUtamaURL == "" {
+			fotoUtamaURL = g.FilePath
+		}
 	}
+
+	// Fallback 1: Jika tidak ada foto dengan is_utama = true, gunakan foto pertama
+	if fotoUtamaURL == "" && len(paket.GambarPaket) > 0 {
+		fotoUtamaURL = paket.GambarPaket[0].FilePath
+	}
+
+	// Fallback 2: Jika tabel foto_paket kosong, gunakan field lama FotoPaket
+	if fotoUtamaURL == "" {
+		fotoUtamaURL = paket.FotoPaket
+	}
+
+	// Jika gambarPaket kosong tapi ada fotoUtamaURL, masukkan ke gambarPaket sebagai fallback
+	if len(gambarPaket) == 0 && fotoUtamaURL != "" {
+		gambarPaket = append(gambarPaket, gin.H{
+			"id":       nil,
+			"url":      fotoUtamaURL,
+			"urutan":   1,
+			"is_utama": true,
+		})
+	}
+
 	if gambarPaket == nil {
 		gambarPaket = []gin.H{}
 	}
@@ -666,7 +758,7 @@ func GetDetailPaketAdmin(c *gin.Context) {
 			"id":                paket.ID,
 			"nama_paket":        paket.NamaPaket,
 			"jenis_paket":       paket.JenisPaket,
-			"foto_paket":        paket.FotoPaket,
+			"foto_paket":        fotoUtamaURL,
 			"gambar_paket":      gambarPaket,
 			"harga":             paket.Harga,
 			"durasi":            paket.Durasi,

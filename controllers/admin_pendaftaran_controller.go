@@ -5,6 +5,8 @@ import (
 	"bonita-backend/helpers"
 	"bonita-backend/models"
 	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -19,6 +21,109 @@ func paymentStatusFromPendaftaran(p models.Pendaftaran) string {
 	return p.Invoice.StatusPembayaran
 }
 
+// getStatusPriority menentukan nomor kelompok prioritas status (1..5)
+// 1. Menunggu pembayaran / dokumen
+// 2. Sedang proses
+// 3. Siap berangkat
+// 4. Selesai
+// 5. Kedaluwarsa / dibatalkan
+func getStatusPriority(status string) int {
+	s := strings.ToLower(strings.TrimSpace(status))
+	switch s {
+	case "menunggu_pembayaran", "menunggu_dokumen", "menunggu":
+		return 1
+	case "proses", "diproses":
+		return 2
+	case "siap_berangkat":
+		return 3
+	case "selesai":
+		return 4
+	case "kadaluarsa", "batal":
+		return 5
+	default:
+		return 6
+	}
+}
+
+// sortPendaftaran mengurutkan pendaftaran secara deterministik berdasarkan
+// 1. Kelompok prioritas status (1..5)
+// 2. Sub-urutan per kelompok sesuai spesifikasi:
+//    - Menunggu pembayaran / dokumen: paling lama menunggu lebih dulu (TanggalDaftar ASC)
+//    - Sedang proses: tanggal pendaftaran paling lama lebih dulu (TanggalDaftar ASC)
+//    - Siap berangkat: tanggal keberangkatan paling dekat lebih dulu (Paket.TanggalBerangkat ASC)
+//    - Selesai: tanggal penyelesaian terbaru lebih dulu (Paket.TanggalBerangkat/TanggalDaftar DESC)
+//    - Kedaluwarsa / dibatalkan: tanggal perubahan status terbaru lebih dulu (BatasWaktuDP/TanggalDaftar DESC)
+func sortPendaftaran(list []models.Pendaftaran) {
+	sort.SliceStable(list, func(i, j int) bool {
+		a := list[i]
+		b := list[j]
+
+		prioA := getStatusPriority(a.Status)
+		prioB := getStatusPriority(b.Status)
+
+		if prioA != prioB {
+			return prioA < prioB
+		}
+
+		switch prioA {
+		case 1:
+			// Menunggu pembayaran / dokumen: paling lama menunggu terlebih dahulu (ASC)
+			if !a.TanggalDaftar.Equal(b.TanggalDaftar) {
+				return a.TanggalDaftar.Before(b.TanggalDaftar)
+			}
+			return a.NomorPendaftaran < b.NomorPendaftaran
+
+		case 2:
+			// Sedang proses: tanggal pendaftaran paling lama terlebih dahulu (ASC)
+			if !a.TanggalDaftar.Equal(b.TanggalDaftar) {
+				return a.TanggalDaftar.Before(b.TanggalDaftar)
+			}
+			return a.NomorPendaftaran < b.NomorPendaftaran
+
+		case 3:
+			// Siap berangkat: tanggal keberangkatan paling dekat terlebih dahulu (ASC)
+			if !a.Paket.TanggalBerangkat.Equal(b.Paket.TanggalBerangkat) {
+				return a.Paket.TanggalBerangkat.Before(b.Paket.TanggalBerangkat)
+			}
+			if !a.TanggalDaftar.Equal(b.TanggalDaftar) {
+				return a.TanggalDaftar.Before(b.TanggalDaftar)
+			}
+			return a.NomorPendaftaran < b.NomorPendaftaran
+
+		case 4:
+			// Selesai: tanggal penyelesaian terbaru terlebih dahulu (DESC)
+			if !a.Paket.TanggalBerangkat.Equal(b.Paket.TanggalBerangkat) {
+				return a.Paket.TanggalBerangkat.After(b.Paket.TanggalBerangkat)
+			}
+			if !a.TanggalDaftar.Equal(b.TanggalDaftar) {
+				return a.TanggalDaftar.After(b.TanggalDaftar)
+			}
+			return a.NomorPendaftaran > b.NomorPendaftaran
+
+		case 5:
+			// Kedaluwarsa / dibatalkan: tanggal perubahan status terbaru terlebih dahulu (DESC)
+			dateA := a.BatasWaktuDP
+			if dateA.IsZero() {
+				dateA = a.TanggalDaftar
+			}
+			dateB := b.BatasWaktuDP
+			if dateB.IsZero() {
+				dateB = b.TanggalDaftar
+			}
+			if !dateA.Equal(dateB) {
+				return dateA.After(dateB)
+			}
+			if !a.TanggalDaftar.Equal(b.TanggalDaftar) {
+				return a.TanggalDaftar.After(b.TanggalDaftar)
+			}
+			return a.NomorPendaftaran > b.NomorPendaftaran
+
+		default:
+			return a.TanggalDaftar.Before(b.TanggalDaftar)
+		}
+	})
+}
+
 func GetAllPendaftaran(c *gin.Context) {
 	var pendaftaran []models.Pendaftaran
 
@@ -26,11 +131,12 @@ func GetAllPendaftaran(c *gin.Context) {
 		Preload("Customer").
 		Preload("Paket").
 		Preload("Invoice").
-		Order("tanggal_daftar DESC").
 		Find(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data pendaftaran"})
 		return
 	}
+
+	sortPendaftaran(pendaftaran)
 
 	var result []gin.H
 	for _, p := range pendaftaran {
@@ -46,6 +152,7 @@ func GetAllPendaftaran(c *gin.Context) {
 			"nomor_invoice":       nomorInvoice,
 			"nama_customer":       p.Customer.Nama,
 			"paket":               p.Paket.NamaPaket,
+			"tanggal_berangkat":   p.Paket.TanggalBerangkat,
 			"payment_status":      paymentStatusFromPendaftaran(p),
 			"document_status":     p.DocumentStatus,
 			"status":              p.Status,
@@ -81,11 +188,12 @@ func GetPendaftaranSaya(c *gin.Context) {
 		Preload("Paket").
 		Preload("Invoice").
 		Where("user_id = ?", userID).
-		Order("tanggal_daftar DESC").
 		Find(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data"})
 		return
 	}
+
+	sortPendaftaran(pendaftaran)
 
 	var result []gin.H
 	for _, p := range pendaftaran {
@@ -93,6 +201,7 @@ func GetPendaftaranSaya(c *gin.Context) {
 			"nomor_pendaftaran": p.NomorPendaftaran,
 			"nama_customer":     p.Customer.Nama,
 			"paket":             p.Paket.NamaPaket,
+			"tanggal_berangkat": p.Paket.TanggalBerangkat,
 			"payment_status":    paymentStatusFromPendaftaran(p),
 			"document_status":   p.DocumentStatus,
 			"status":            p.Status,

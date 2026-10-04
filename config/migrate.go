@@ -202,4 +202,17 @@ func Migrate() {
 		SET total_perlengkapan = 0
 		WHERE total_perlengkapan IS NULL
 	`)
+
+	// Step 14: Sync foto_paket di paket_umroh jika kosong tapi punya foto di foto_paket
+	DB.Exec(`
+		UPDATE paket_umroh pu
+		SET foto_paket = sub.file_path
+		FROM (
+			SELECT DISTINCT ON (paket_id) paket_id, file_path
+			FROM foto_paket
+			ORDER BY paket_id, is_utama DESC, urutan ASC
+		) sub
+		WHERE pu.id = sub.paket_id
+		  AND (pu.foto_paket IS NULL OR pu.foto_paket = '')
+	`)
 }

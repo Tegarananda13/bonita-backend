@@ -74,8 +74,9 @@ func buildJudul(isi string) string {
 
 // ── ChatbotRequest ─────────────────────────────────────────────────────────────
 
-// RegData menyimpan state sementara pendaftaran melalui chatbot
+// RegData menyimpan state sementara formulir pendaftaran melalui chatbot
 type RegData struct {
+	SessionID     string `json:"session_id"` // ID unik untuk proses pendaftaran saat ini
 	PaketID       string `json:"paket_id"`
 	PaketNama     string `json:"paket_nama"`
 	NIK           string `json:"nik"`
@@ -94,13 +95,15 @@ type RegData struct {
 }
 
 type ChatbotRequest struct {
-	Pertanyaan    string  `json:"pertanyaan" binding:"required"`
-	Flow          string  `json:"flow"`           // "" | "pengaduan" | "registrasi"
-	Step          string  `json:"step"`           // berbeda per flow
-	NomorUMR      string  `json:"nomor_umr"`
-	PendaftaranID string  `json:"pendaftaran_id"`
-	Kategori      string  `json:"kategori"`
-	RegData       *RegData `json:"reg_data"`      // state pendaftaran chatbot
+	Pertanyaan    string   `json:"pertanyaan" binding:"required"`
+	ChatSessionID string   `json:"chat_session_id"` // Identitas Chat Session percakapan
+	RegSessionID  string   `json:"reg_session_id"`  // Identitas Registration Session aktif
+	Flow          string   `json:"flow"`            // "" | "pengaduan" | "registrasi"
+	Step          string   `json:"step"`            // berbeda per flow
+	NomorUMR      string   `json:"nomor_umr"`
+	PendaftaranID string   `json:"pendaftaran_id"`
+	Kategori      string   `json:"kategori"`
+	RegData       *RegData `json:"reg_data"`        // state pendaftaran chatbot
 }
 
 // ── Chatbot ────────────────────────────────────────────────────────────────────
@@ -122,7 +125,7 @@ func Chatbot(c *gin.Context) {
 
 		// ── Pengaduan selesai (stale state) → arahkan ke pengaduan baru ──
 		case "done", "error":
-			chatbotResponse(c, req.Pertanyaan, "pengaduan",
+			chatbotResponse(c, req, "pengaduan",
 				"Baik, saya akan membantu membuat laporan pengaduan.\n\n"+
 					"Silakan masukkan **Nomor UMR** Anda terlebih dahulu.\n\n"+
 					"Contoh: **UMR-20260718123456**",
@@ -140,13 +143,13 @@ func Chatbot(c *gin.Context) {
 				First(&pendaftaran).Error
 
 			if err != nil {
-				chatbotResponse(c, req.Pertanyaan, "pengaduan",
+				chatbotResponse(c, req, "pengaduan",
 					"Nomor UMR tidak ditemukan. Silakan periksa kembali dan coba lagi dengan format: **UMR-YYYYMMDDHHMMSS**",
 					"ask_nomor", "")
 				return
 			}
 
-			chatbotResponse(c, req.Pertanyaan, "pengaduan",
+			chatbotResponse(c, req, "pengaduan",
 				"Baik, Nomor UMR **"+nomorInput+"** atas nama **"+pendaftaran.Customer.Nama+"** ditemukan.\n\n"+
 					"Silakan pilih **kategori pengaduan** Anda:",
 				"ask_kategori", pendaftaran.NomorPendaftaran)
@@ -166,13 +169,13 @@ func Chatbot(c *gin.Context) {
 				}
 			}
 			if !valid {
-				chatbotResponse(c, req.Pertanyaan, "pengaduan",
+				chatbotResponse(c, req, "pengaduan",
 					"Kategori tidak valid. Silakan pilih salah satu kategori yang tersedia.",
 					"ask_kategori", req.PendaftaranID)
 				return
 			}
 
-			chatbotResponse(c, req.Pertanyaan, "pengaduan",
+			chatbotResponse(c, req, "pengaduan",
 				"Kategori **"+kategori+"** dipilih.\n\nSilakan jelaskan keluhan Anda secara singkat:",
 				"ask_isi_"+kategori, req.PendaftaranID)
 			return
@@ -196,7 +199,7 @@ func Chatbot(c *gin.Context) {
 
 				isi := strings.TrimSpace(req.Pertanyaan)
 				if isi == "" {
-					chatbotResponse(c, req.Pertanyaan, "pengaduan",
+					chatbotResponse(c, req, "pengaduan",
 						"Isi pengaduan tidak boleh kosong. Silakan jelaskan keluhan Anda.",
 						req.Step, req.PendaftaranID)
 					return
@@ -207,7 +210,7 @@ func Chatbot(c *gin.Context) {
 				if err := config.DB.
 					Where("nomor_pendaftaran = ?", req.PendaftaranID).
 					First(&pendaftaranForPengaduan).Error; err != nil {
-					chatbotResponse(c, req.Pertanyaan, "pengaduan",
+					chatbotResponse(c, req, "pengaduan",
 						"Terjadi kesalahan pada sesi Anda. Silakan mulai ulang proses pengaduan.",
 						"error", "")
 					return
@@ -225,7 +228,7 @@ func Chatbot(c *gin.Context) {
 				}
 
 				if err := config.DB.Create(&pengaduan).Error; err != nil {
-					chatbotResponse(c, req.Pertanyaan, "pengaduan",
+					chatbotResponse(c, req, "pengaduan",
 						"Maaf, terjadi kesalahan saat menyimpan pengaduan. Silakan coba lagi.",
 						req.Step, req.PendaftaranID)
 					return
@@ -234,7 +237,7 @@ func Chatbot(c *gin.Context) {
 				// log chatbot
 				saveChatLog(req.Pertanyaan, "Pengaduan berhasil dikirim. ID: "+pengaduan.ID.String())
 
-				chatbotResponse(c, req.Pertanyaan, "pengaduan",
+				chatbotResponse(c, req, "pengaduan",
 					"✅ **Terima kasih!** Laporan Anda berhasil dikirim.\n\n"+
 						"Admin Bonita akan segera menindaklanjuti pengaduan Anda.\n\n"+
 						"Ada yang bisa kami bantu lagi?",
@@ -243,7 +246,7 @@ func Chatbot(c *gin.Context) {
 			}
 		}
 
-		chatbotResponse(c, req.Pertanyaan, "pengaduan",
+		chatbotResponse(c, req, "pengaduan",
 			"Sesi pengaduan tidak dikenali. Silakan mulai ulang.", "error", "")
 		return
 	}
@@ -258,33 +261,14 @@ func Chatbot(c *gin.Context) {
 	// ── DETEKSI INTENT REGISTRASI ─────────────────────────────────────────────
 
 	if detectIntentRegistrasi(req.Pertanyaan) {
-		// Ambil daftar paket aktif
-		var pakets []models.PaketUmroh
-		config.DB.Where("is_active = true AND is_finished = false").Order("tanggal_berangkat ASC").Find(&pakets)
-
-		if len(pakets) == 0 {
-			chatbotResponse(c, req.Pertanyaan, "",
-				"Maaf, saat ini belum ada paket umroh yang tersedia. Silakan cek kembali nanti.", "", "")
-			return
-		}
-
-		paketList := "Berikut paket umroh yang tersedia:\n\n"
-		for i, p := range pakets {
-			paketList += fmt.Sprintf("%d. **%s**\n   💰 %s\n   📅 Berangkat: %s\n\n",
-				i+1, p.NamaPaket,
-				formatRupiah(p.Harga),
-				p.TanggalBerangkat.Format("02 Jan 2006"))
-		}
-		paketList += "Ketik **nama paket** yang ingin Anda pilih:"
-
-		chatbotResponse(c, req.Pertanyaan, "registrasi", paketList, "pilih_paket", "")
+		startRegistrasiFlow(c, req)
 		return
 	}
 
 	// ── DETEKSI INTENT PENGADUAN ─────────────────────────────────────────────
 
 	if detectIntentPengaduan(req.Pertanyaan) {
-		chatbotResponse(c, req.Pertanyaan, "pengaduan",
+		chatbotResponse(c, req, "pengaduan",
 			"Baik, saya akan membantu membuat laporan pengaduan.\n\nSilakan masukkan **Nomor UMR** Anda terlebih dahulu.\n\nContoh: **UMR-20260718123456**",
 			"ask_nomor", "")
 		return
@@ -306,10 +290,12 @@ func Chatbot(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Berhasil mendapatkan jawaban",
 		"data": gin.H{
-			"pertanyaan": req.Pertanyaan,
-			"jawaban":    jawaban,
-			"flow":       "",
-			"step":       "",
+			"pertanyaan":      req.Pertanyaan,
+			"jawaban":         jawaban,
+			"flow":            "",
+			"step":            "",
+			"chat_session_id": req.ChatSessionID,
+			"reg_session_id":  "",
 		},
 	})
 }
@@ -317,47 +303,103 @@ func Chatbot(c *gin.Context) {
 // ── Helpers internal ─────────────────────────────────────────────────────────
 
 // chatbotResponse — mengirimkan response chatbot dengan state flow
-func chatbotResponse(c *gin.Context, pertanyaan, flow, jawaban, nextStep, pendaftaranID string) {
-	saveChatLog(pertanyaan, jawaban)
+func chatbotResponse(c *gin.Context, req ChatbotRequest, flow, jawaban, nextStep, pendaftaranID string) {
+	saveChatLog(req.Pertanyaan, jawaban)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Berhasil mendapatkan jawaban",
 		"data": gin.H{
-			"pertanyaan":     pertanyaan,
-			"jawaban":        jawaban,
-			"flow":           flow,
-			"step":           nextStep,
-			"pendaftaran_id": pendaftaranID,
+			"pertanyaan":      req.Pertanyaan,
+			"jawaban":         jawaban,
+			"flow":            flow,
+			"step":            nextStep,
+			"chat_session_id": req.ChatSessionID,
+			"reg_session_id":  "",
+			"pendaftaran_id":  pendaftaranID,
 		},
 	})
 }
 
 // chatbotResponseReg — response dengan reg_data untuk flow registrasi
-func chatbotResponseReg(c *gin.Context, pertanyaan, jawaban, nextStep string, regData *RegData) {
-	saveChatLog(pertanyaan, jawaban)
+func chatbotResponseReg(c *gin.Context, req ChatbotRequest, jawaban, nextStep string, regData *RegData) {
+	saveChatLog(req.Pertanyaan, jawaban)
+	regSessID := req.RegSessionID
+	if regData != nil && regData.SessionID != "" {
+		regSessID = regData.SessionID
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Berhasil mendapatkan jawaban",
 		"data": gin.H{
-			"pertanyaan":     pertanyaan,
-			"jawaban":        jawaban,
-			"flow":           "registrasi",
-			"step":           nextStep,
-			"pendaftaran_id": "",
-			"reg_data":       regData,
+			"pertanyaan":      req.Pertanyaan,
+			"jawaban":         jawaban,
+			"flow":            "registrasi",
+			"step":            nextStep,
+			"chat_session_id": req.ChatSessionID,
+			"reg_session_id":  regSessID,
+			"pendaftaran_id":  "",
+			"reg_data":        regData,
 		},
 	})
+}
+
+// startRegistrasiFlow memulai proses pendaftaran baru dengan Registration Session ID baru
+func startRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
+	var pakets []models.PaketUmroh
+	config.DB.Where("is_active = true AND is_finished = false").Order("tanggal_berangkat ASC").Find(&pakets)
+
+	if len(pakets) == 0 {
+		chatbotResponse(c, req, "",
+			"Maaf, saat ini belum ada paket umroh yang tersedia. Silakan cek kembali nanti.", "", "")
+		return
+	}
+
+	paketList := "Berikut paket umroh yang tersedia:\n\n"
+	for i, p := range pakets {
+		paketList += fmt.Sprintf("%d. **%s**\n   💰 %s\n   📅 Berangkat: %s\n\n",
+			i+1, p.NamaPaket,
+			formatRupiah(p.Harga),
+			p.TanggalBerangkat.Format("02 Jan 2006"))
+	}
+	paketList += "Ketik **nama paket** yang ingin Anda pilih:"
+
+	// Buat Registration Session ID baru untuk proses pendaftaran saat ini
+	newRegSessionID := "reg-" + uuid.New().String()
+	freshRegData := &RegData{
+		SessionID: newRegSessionID,
+	}
+
+	saveChatLog(req.Pertanyaan, paketList)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Berhasil mendapatkan jawaban",
+		"data": gin.H{
+			"pertanyaan":      req.Pertanyaan,
+			"jawaban":         paketList,
+			"flow":            "registrasi",
+			"step":            "pilih_paket",
+			"chat_session_id": req.ChatSessionID,
+			"reg_session_id":  newRegSessionID,
+			"pendaftaran_id":  "",
+			"reg_data":        freshRegData,
+		},
+	})
+}
+
+// intentRegistrasi daftar kata kunci untuk intent pendaftaran umroh
+var intentRegistrasi = []string{
+	"daftar umroh", "ingin daftar", "mau daftar", "mendaftar umroh",
+	"daftar jamaah", "pendaftaran umroh", "ingin mendaftar",
+	"mau mendaftar", "saya ingin daftar", "saya mau daftar",
+	"registrasi umroh", "ingin registrasi", "daftar lagi",
+	"mau daftar lagi", "ingin daftar lagi", "pendaftaran baru",
+	"daftar baru", "mendaftarkan jamaah", "daftar jamaah lain",
+	"mendaftar lagi", "registrasi baru", "registrasi lagi",
+	"daftarkan jamaah", "daftar keluarga", "daftar orang lain",
 }
 
 // detectIntentRegistrasi cek apakah pesan mengandung intent mendaftar umroh
 func detectIntentRegistrasi(msg string) bool {
 	lower := strings.ToLower(strings.TrimSpace(msg))
-	keywords := []string{
-		"daftar umroh", "ingin daftar", "mau daftar", "mendaftar umroh",
-		"daftar jamaah", "pendaftaran umroh", "ingin mendaftar",
-		"mau mendaftar", "saya ingin daftar", "saya mau daftar",
-		"registrasi umroh", "ingin registrasi",
-	}
-	for _, kw := range keywords {
+	for _, kw := range intentRegistrasi {
 		if strings.Contains(lower, kw) {
 			return true
 		}
@@ -373,7 +415,63 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 	if rd == nil {
 		rd = &RegData{}
 	}
+	if rd.SessionID == "" && req.RegSessionID != "" {
+		rd.SessionID = req.RegSessionID
+	}
 	input := strings.TrimSpace(req.Pertanyaan)
+
+	// Jika step sebelumnya sudah selesai / batal / error / kosong:
+	if req.Step == "" || req.Step == "selesai" || req.Step == "batal" || req.Step == "error" {
+		// Jika customer ingin mendaftar lagi, mulai pendaftaran baru
+		if detectIntentRegistrasi(req.Pertanyaan) {
+			startRegistrasiFlow(c, req)
+			return
+		}
+		// Jika customer ingin membuat pengaduan
+		if detectIntentPengaduan(req.Pertanyaan) {
+			chatbotResponse(c, req, "pengaduan",
+				"Baik, saya akan membantu membuat laporan pengaduan.\n\nSilakan masukkan **Nomor UMR** Anda terlebih dahulu.\n\nContoh: **UMR-20260718123456**",
+				"ask_nomor", "")
+			return
+		}
+		// Pertanyaan umum lainnya → alihkan ke Gemini tanpa error
+		jawaban, err := helpers.AskGemini(req.Pertanyaan)
+		if err != nil {
+			jawaban = "Ada yang bisa saya bantu lagi? Ketik **daftar umroh** jika Anda ingin mendaftarkan jamaah."
+		}
+		saveChatLog(req.Pertanyaan, jawaban)
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Berhasil mendapatkan jawaban",
+			"data": gin.H{
+				"pertanyaan":      req.Pertanyaan,
+				"jawaban":         jawaban,
+				"flow":            "",
+				"step":            "",
+				"chat_session_id": req.ChatSessionID,
+				"reg_session_id":  "",
+				"reg_data":        nil,
+			},
+		})
+		return
+	}
+
+	// Pembatalan pendaftaran di tahap apapun
+	if strings.EqualFold(input, "batal") || strings.EqualFold(input, "batalkan") || strings.EqualFold(input, "cancel") {
+		saveChatLog(req.Pertanyaan, "Pendaftaran dibatalkan oleh pengguna")
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Berhasil mendapatkan jawaban",
+			"data": gin.H{
+				"pertanyaan":      req.Pertanyaan,
+				"jawaban":         "Baik, proses pendaftaran telah dibatalkan. Jika Anda ingin memulai kembali, ketik **daftar umroh**.",
+				"flow":            "",
+				"step":            "batal",
+				"chat_session_id": req.ChatSessionID,
+				"reg_session_id":  "",
+				"reg_data":        nil,
+			},
+		})
+		return
+	}
 
 	switch req.Step {
 
@@ -391,14 +489,14 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 			}
 		}
 		if chosen == nil {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"Paket tidak ditemukan. Silakan ketik nama paket yang tersedia dengan benar.",
 				"pilih_paket", rd)
 			return
 		}
 		rd.PaketID = chosen.ID.String()
 		rd.PaketNama = chosen.NamaPaket
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			fmt.Sprintf("Paket **%s** dipilih ✅\n\nSekarang saya akan meminta data jamaah satu per satu.\n\nMohon masukkan **NIK** (16 digit):",
 				chosen.NamaPaket),
 			"ask_nik", rd)
@@ -407,56 +505,56 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 		// Validasi NIK
 		nik := strings.ReplaceAll(input, " ", "")
 		if len(nik) != 16 {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"NIK harus tepat 16 digit angka. Silakan coba lagi:", "ask_nik", rd)
 			return
 		}
 		for _, ch := range nik {
 			if ch < '0' || ch > '9' {
-				chatbotResponseReg(c, req.Pertanyaan,
+				chatbotResponseReg(c, req,
 					"NIK hanya boleh berisi angka. Silakan coba lagi:", "ask_nik", rd)
 				return
 			}
 		}
 		var existing models.Customer
 		if config.DB.Where("nik = ?", nik).First(&existing).Error == nil {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"NIK tersebut sudah terdaftar dalam sistem. Silakan hubungi admin jika ada masalah.",
 				"ask_nik", rd)
 			return
 		}
 		rd.NIK = nik
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"NIK diterima ✅\n\nMohon masukkan **Nama Lengkap**:", "ask_nama", rd)
 
 	case "ask_nama":
 		rd.Nama = input
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"Nama: **"+rd.Nama+"** ✅\n\nMohon masukkan **Tempat Lahir**:", "ask_tempat_lahir", rd)
 
 	case "ask_tempat_lahir":
 		rd.TempatLahir = input
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"Tempat Lahir: **"+rd.TempatLahir+"** ✅\n\nMohon masukkan **Tanggal Lahir** (format: YYYY-MM-DD):",
 			"ask_tanggal_lahir", rd)
 
 	case "ask_tanggal_lahir":
 		_, err := time.Parse("2006-01-02", input)
 		if err != nil {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"Format tanggal tidak valid. Gunakan format YYYY-MM-DD, contoh: 1990-05-20",
 				"ask_tanggal_lahir", rd)
 			return
 		}
 		rd.TanggalLahir = input
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"Tanggal Lahir: **"+rd.TanggalLahir+"** ✅\n\nMohon masukkan **Jenis Kelamin** (Laki-laki/Perempuan):",
 			"ask_jenis_kelamin", rd)
 
 	case "ask_jenis_kelamin":
 		lower := strings.ToLower(input)
 		if !strings.Contains(lower, "laki") && !strings.Contains(lower, "perempuan") {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"Jenis kelamin tidak valid. Ketik **Laki-laki** atau **Perempuan**:",
 				"ask_jenis_kelamin", rd)
 			return
@@ -466,43 +564,43 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 		} else {
 			rd.JenisKelamin = "Perempuan"
 		}
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"Jenis Kelamin: **"+rd.JenisKelamin+"** ✅\n\nMohon masukkan **Nomor HP** (aktif):",
 			"ask_no_hp", rd)
 
 	case "ask_no_hp":
 		rd.NoHP = input
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"No. HP: **"+rd.NoHP+"** ✅\n\nMohon masukkan **Email**:", "ask_email", rd)
 
 	case "ask_email":
 		rd.Email = input
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"Email: **"+rd.Email+"** ✅\n\nMohon masukkan **Alamat Lengkap**:", "ask_alamat", rd)
 
 	case "ask_alamat":
 		rd.AlamatLengkap = input
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"Alamat: **"+rd.AlamatLengkap+"** ✅\n\nMohon masukkan **Provinsi**:", "ask_provinsi", rd)
 
 	case "ask_provinsi":
 		rd.Provinsi = input
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"Provinsi: **"+rd.Provinsi+"** ✅\n\nMohon masukkan **Kabupaten/Kota**:", "ask_kabupaten", rd)
 
 	case "ask_kabupaten":
 		rd.KabupatenKota = input
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"Kab/Kota: **"+rd.KabupatenKota+"** ✅\n\nMohon masukkan **Kecamatan**:", "ask_kecamatan", rd)
 
 	case "ask_kecamatan":
 		rd.Kecamatan = input
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"Kecamatan: **"+rd.Kecamatan+"** ✅\n\nMohon masukkan **Kelurahan/Desa**:", "ask_kelurahan", rd)
 
 	case "ask_kelurahan":
 		rd.KelurahanDesa = input
-		chatbotResponseReg(c, req.Pertanyaan,
+		chatbotResponseReg(c, req,
 			"Kelurahan/Desa: **"+rd.KelurahanDesa+"** ✅\n\nMohon masukkan **Kode Pos**:", "ask_kode_pos", rd)
 
 	case "ask_kode_pos":
@@ -529,18 +627,27 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 			rd.PaketNama, rd.NIK, rd.Nama, rd.TempatLahir, rd.TanggalLahir,
 			rd.JenisKelamin, rd.NoHP, rd.Email, rd.AlamatLengkap,
 			rd.Provinsi, rd.KabupatenKota, rd.Kecamatan, rd.KelurahanDesa, rd.KodePos)
-		chatbotResponseReg(c, req.Pertanyaan, ringkasan, "konfirmasi", rd)
+		chatbotResponseReg(c, req, ringkasan, "konfirmasi", rd)
 
 	case "konfirmasi":
 		if strings.ToLower(input) == "tidak" || strings.ToLower(input) == "ulang" {
-			// Reset dan mulai dari paket
-			chatbotResponseReg(c, req.Pertanyaan,
-				"Baik, pendaftaran dibatalkan. Ketik **daftar umroh** untuk memulai kembali.",
-				"batal", nil)
+			saveChatLog(req.Pertanyaan, "Pendaftaran dibatalkan pada konfirmasi")
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Berhasil mendapatkan jawaban",
+				"data": gin.H{
+					"pertanyaan":      req.Pertanyaan,
+					"jawaban":         "Baik, pendaftaran dibatalkan. Ketik **daftar umroh** untuk memulai kembali.",
+					"flow":            "",
+					"step":            "batal",
+					"chat_session_id": req.ChatSessionID,
+					"reg_session_id":  "",
+					"reg_data":        nil,
+				},
+			})
 			return
 		}
 		if strings.ToLower(input) != "ya" {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"Ketik **Ya** untuk konfirmasi atau **Tidak** untuk membatalkan.",
 				"konfirmasi", rd)
 			return
@@ -549,19 +656,19 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 		// ── Eksekusi pendaftaran ──────────────────────────────────────────────
 		paketID, err := uuid.Parse(rd.PaketID)
 		if err != nil {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"Terjadi kesalahan pada data paket. Silakan mulai ulang.", "error", nil)
 			return
 		}
 
 		var paket models.PaketUmroh
 		if config.DB.First(&paket, "id = ?", paketID).Error != nil {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"Paket tidak ditemukan. Silakan mulai ulang.", "error", nil)
 			return
 		}
 		if paket.KuotaTerpakai >= paket.KuotaMax {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"Maaf, kuota paket ini sudah penuh. Silakan pilih paket lain.", "error", nil)
 			return
 		}
@@ -587,7 +694,7 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 			CreatedAt:     time.Now(),
 		}
 		if config.DB.Create(&customer).Error != nil {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"Gagal menyimpan data customer. Silakan coba lagi.", "error", nil)
 			return
 		}
@@ -602,7 +709,7 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 			StatusPembayaran: models.InvoiceStatusBelumBayar,
 		}
 		if config.DB.Create(&invoice).Error != nil {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"Gagal membuat invoice. Silakan coba lagi.", "error", nil)
 			return
 		}
@@ -624,7 +731,7 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 			BatasWaktuDP:       batasDP,
 		}
 		if config.DB.Create(&pendaftaran).Error != nil {
-			chatbotResponseReg(c, req.Pertanyaan,
+			chatbotResponseReg(c, req,
 				"Gagal menyimpan pendaftaran. Silakan coba lagi.", "error", nil)
 			return
 		}
@@ -638,26 +745,56 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 
 		// Log & response sukses
 		saveChatLog(req.Pertanyaan, "Registrasi berhasil: "+nomor)
+
+		jawabanSukses := fmt.Sprintf(
+			"Alhamdulillah, pendaftaran Anda berhasil dibuat dengan nomor UMR **%s**.\n\n"+
+				"📋 Nomor Pendaftaran: **%s**\n"+
+				"🧾 Nomor Invoice: **%s**\n"+
+				"📦 Paket: **%s**\n\n"+
+				"⏰ **Pembayaran DP harus dilakukan paling lambat: %s**\n\n"+
+				"Simpan nomor pendaftaran Anda untuk login ke Portal Jamaah. Admin Bonita akan segera memproses pendaftaran Anda.\n\n"+
+				"Apakah ada hal lain yang bisa saya bantu? Jika ingin mendaftarkan jamaah lainnya, Anda bisa memulai pendaftaran baru dengan mengetik **daftar umroh**.",
+			nomor, nomor, nomorInvoice, paket.NamaPaket, batasDPStr,
+		)
+
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Berhasil mendapatkan jawaban",
 			"data": gin.H{
 				"pertanyaan":        req.Pertanyaan,
-				"jawaban":           fmt.Sprintf("✅ **Pendaftaran berhasil!**\n\n📋 Nomor Pendaftaran: **%s**\n🧾 Nomor Invoice: **%s**\n📦 Paket: **%s**\n\n⏰ **Pembayaran DP harus dilakukan paling lambat: %s**\n\nSimpan nomor pendaftaran Anda untuk login ke Portal Jamaah. Admin Bonita akan segera memproses pendaftaran Anda.", nomor, nomorInvoice, paket.NamaPaket, batasDPStr),
-				"flow":              "registrasi",
-				"step":              "selesai",
-				// "pendaftaran_id" berisi nomor_pendaftaran (Phase 4 — bukan UUID lagi)
+				"jawaban":           jawabanSukses,
+				"flow":              "",        // Chatbot kembali ke mode normal / percakapan umum
+				"step":              "selesai", // Pendaftaran saat ini selesai
+				"chat_session_id":   req.ChatSessionID,
+				"reg_session_id":    "",        // Registration session aktif selesai & dibersihkan
 				"pendaftaran_id":    pendaftaran.NomorPendaftaran,
 				"nomor_pendaftaran": nomor,
 				"batas_waktu_dp":    batasDP,
-				"reg_data":          nil,
+				"reg_data":          nil,       // Formulir sementara dibersihkan
 			},
 		})
 		return
 
 	default:
-		chatbotResponseReg(c, req.Pertanyaan,
-			"Sesi pendaftaran tidak dikenali. Ketik **daftar umroh** untuk memulai.",
-			"error", nil)
+		// Jika pengguna mengetik intent pendaftaran baru, mulai ulang pendaftaran baru
+		if detectIntentRegistrasi(req.Pertanyaan) {
+			startRegistrasiFlow(c, req)
+			return
+		}
+
+		// Jika memang step tidak dikenali dan bukan intent baru
+		saveChatLog(req.Pertanyaan, "Sesi pendaftaran tidak dikenali")
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Berhasil mendapatkan jawaban",
+			"data": gin.H{
+				"pertanyaan":      req.Pertanyaan,
+				"jawaban":         "Sesi pendaftaran tidak dikenali atau telah berakhir. Ketik **daftar umroh** untuk memulai pendaftaran baru.",
+				"flow":            "",
+				"step":            "error",
+				"chat_session_id": req.ChatSessionID,
+				"reg_session_id":  "",
+				"reg_data":        nil,
+			},
+		})
 	}
 }
 

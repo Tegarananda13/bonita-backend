@@ -51,11 +51,17 @@ func VerifikasiPembayaran(c *gin.Context) {
 		recalcInvoiceStatus(pembayaran.NomorInvoice)
 	}
 
+	var countMenunggu int64
+	config.DB.Model(&models.Pembayaran{}).
+		Where("status = ?", helpers.PaymentVerificationPending).
+		Count(&countMenunggu)
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Status pembayaran berhasil diupdate",
 		"data": gin.H{
-			"id":     pembayaran.ID,
-			"status": pembayaran.Status,
+			"id":            pembayaran.ID,
+			"status":        pembayaran.Status,
+			"pending_count": countMenunggu,
 		},
 	})
 }
@@ -141,8 +147,14 @@ func GetPendingPembayaran(c *gin.Context) {
 		})
 	}
 
+	var countMenunggu int64
+	config.DB.Model(&models.Pembayaran{}).
+		Where("status = ?", helpers.PaymentVerificationPending).
+		Count(&countMenunggu)
+
 	c.JSON(http.StatusOK, gin.H{
-		"total": len(result),
-		"data":  result,
+		"total":          countMenunggu,
+		"count_menunggu": countMenunggu,
+		"data":           result,
 	})
 }
