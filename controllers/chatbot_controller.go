@@ -345,22 +345,15 @@ func chatbotResponseReg(c *gin.Context, req ChatbotRequest, jawaban, nextStep st
 // startRegistrasiFlow memulai proses pendaftaran baru dengan Registration Session ID baru
 func startRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 	var pakets []models.PaketUmroh
-	config.DB.Where("is_active = true AND is_finished = false").Order("tanggal_berangkat ASC").Find(&pakets)
+	helpers.PaketTersediaScope(config.DB, time.Now()).Order("tanggal_berangkat ASC").Find(&pakets)
 
 	if len(pakets) == 0 {
 		chatbotResponse(c, req, "",
-			"Maaf, saat ini belum ada paket umroh yang tersedia. Silakan cek kembali nanti.", "", "")
+			"Maaf, saat ini belum ada paket umroh yang tersedia untuk pendaftaran.", "", "")
 		return
 	}
 
-	paketList := "Berikut paket umroh yang tersedia:\n\n"
-	for i, p := range pakets {
-		paketList += fmt.Sprintf("%d. **%s**\n   💰 %s\n   📅 Berangkat: %s\n\n",
-			i+1, p.NamaPaket,
-			formatRupiah(p.Harga),
-			p.TanggalBerangkat.Format("02 Jan 2006"))
-	}
-	paketList += "Ketik **nama paket** yang ingin Anda pilih:"
+	paketList := buildPaketTersediaList(pakets)
 
 	// Buat Registration Session ID baru untuk proses pendaftaran saat ini
 	newRegSessionID := "reg-" + uuid.New().String()
@@ -478,7 +471,7 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 	case "pilih_paket":
 		// Cari paket berdasarkan nama (case-insensitive)
 		var pakets []models.PaketUmroh
-		config.DB.Where("is_active = true AND is_finished = false").Find(&pakets)
+		helpers.PaketTersediaScope(config.DB, time.Now()).Order("tanggal_berangkat ASC").Find(&pakets)
 
 		var chosen *models.PaketUmroh
 		for i, p := range pakets {
@@ -667,9 +660,37 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 				"Paket tidak ditemukan. Silakan mulai ulang.", "error", nil)
 			return
 		}
-		if paket.KuotaTerpakai >= paket.KuotaMax {
+		// Reservasi kuota atomik dalam transaksi: pendaftaran, invoice, dan kuota
+		// berhasil bersama atau gagal bersama (validasi ulang saat submit).
+		tx := config.DB.Begin()
+		if tx.Error != nil {
 			chatbotResponseReg(c, req,
-				"Maaf, kuota paket ini sudah penuh. Silakan pilih paket lain.", "error", nil)
+				"Terjadi kesalahan sistem. Silakan coba lagi.", "error", nil)
+			return
+		}
+		reserved, rerr := helpers.ReservasiKuotaPaket(tx, paketID, 1, time.Now())
+		if rerr != nil {
+			tx.Rollback()
+			chatbotResponseReg(c, req,
+				"Terjadi kesalahan sistem. Silakan coba lagi.", "error", nil)
+			return
+		}
+		if !reserved {
+			tx.Rollback()
+			// Paket penuh / tidak lagi tersedia → minta customer memilih paket lain
+			var tersedia []models.PaketUmroh
+			helpers.PaketTersediaScope(config.DB, time.Now()).Order("tanggal_berangkat ASC").Find(&tersedia)
+			if len(tersedia) == 0 {
+				chatbotResponseReg(c, req,
+					"Maaf, paket yang Anda pilih sudah tidak tersedia dan saat ini belum ada paket umroh lain yang tersedia untuk pendaftaran.", "error", nil)
+				return
+			}
+			rd.PaketID = ""
+			rd.PaketNama = ""
+			chatbotResponseReg(c, req,
+				"Maaf, kuota paket **"+paket.NamaPaket+"** sudah penuh atau paket sudah tidak tersedia. Silakan pilih paket lain.\n\n"+
+					buildPaketTersediaList(tersedia),
+				"pilih_paket", rd)
 			return
 		}
 
@@ -693,7 +714,8 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 			KodePos:       rd.KodePos,
 			CreatedAt:     time.Now(),
 		}
-		if config.DB.Create(&customer).Error != nil {
+		if tx.Create(&customer).Error != nil {
+			tx.Rollback()
 			chatbotResponseReg(c, req,
 				"Gagal menyimpan data customer. Silakan coba lagi.", "error", nil)
 			return
@@ -708,7 +730,8 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 			TotalPembayaran:  0,
 			StatusPembayaran: models.InvoiceStatusBelumBayar,
 		}
-		if config.DB.Create(&invoice).Error != nil {
+		if tx.Create(&invoice).Error != nil {
+			tx.Rollback()
 			chatbotResponseReg(c, req,
 				"Gagal membuat invoice. Silakan coba lagi.", "error", nil)
 			return
@@ -730,14 +753,19 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 			TanggalDaftar:      time.Now(),
 			BatasWaktuDP:       batasDP,
 		}
-		if config.DB.Create(&pendaftaran).Error != nil {
+		if tx.Create(&pendaftaran).Error != nil {
+			tx.Rollback()
 			chatbotResponseReg(c, req,
 				"Gagal menyimpan pendaftaran. Silakan coba lagi.", "error", nil)
 			return
 		}
 
-		// Update kuota
-		config.DB.Model(&paket).Update("kuota_terpakai", paket.KuotaTerpakai+1)
+		// Kuota sudah ditambah secara atomik oleh ReservasiKuotaPaket; commit semuanya
+		if tx.Commit().Error != nil {
+			chatbotResponseReg(c, req,
+				"Gagal menyimpan pendaftaran. Silakan coba lagi.", "error", nil)
+			return
+		}
 
 		// Format deadline DP dalam WIB
 		wib := time.FixedZone("WIB", 7*3600)
@@ -811,4 +839,23 @@ func saveChatLog(pertanyaan, jawaban string) {
 		CreatedAt:  time.Now(),
 	}
 	config.DB.Create(&log) //nolint
+}
+// formatTanggalIDSingkat — format "03 Des 2026" (WIB)
+func formatTanggalIDSingkat(t time.Time) string {
+	bulan := []string{"", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"}
+	t = t.In(time.FixedZone("WIB", 7*3600))
+	return fmt.Sprintf("%02d %s %d", t.Day(), bulan[t.Month()], t.Year())
+}
+
+// buildPaketTersediaList — daftar paket yang masih bisa didaftarkan beserta kuota tersedia
+func buildPaketTersediaList(pakets []models.PaketUmroh) string {
+	list := "Berikut paket umroh yang masih tersedia:\n\n"
+	for i, p := range pakets {
+		list += fmt.Sprintf("%d. **%s**\n   💰 Rp%s\n   📅 Berangkat: %s\n   👥 %d/%d tersedia\n\n",
+			i+1, p.NamaPaket,
+			formatRupiah(p.Harga),
+			formatTanggalIDSingkat(p.TanggalBerangkat),
+			helpers.PaketKuotaTersedia(p), p.KuotaMax)
+	}
+	return list + "Ketik **nama paket** yang ingin Anda pilih:"
 }

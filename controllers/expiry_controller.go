@@ -24,6 +24,11 @@ const DPDeadlineHours = 24
 func ProcessExpiry() {
 	now := time.Now()
 
+	// Auto-selesaikan paket yang TanggalBerangkat + Durasi sudah lewat
+	if err := helpers.SyncFinishedPaket(); err != nil {
+		log.Printf("[Expiry] Gagal sinkron paket selesai: %v", err)
+	}
+
 	// Ambil semua pendaftaran "proses" yang sudah melewati batas waktu DP
 	var pendaftaranList []models.Pendaftaran
 	if err := config.DB.

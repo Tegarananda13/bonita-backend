@@ -173,6 +173,9 @@ func CreatePaket(c *gin.Context) {
 		config.DB.Create(&foto) // best-effort; tidak batalkan create paket jika gagal
 	}
 
+	// Paket yang tanggal selesainya sudah lewat langsung dianggap selesai & nonaktif
+	_ = helpers.SyncFinishedPaket()
+
 
 	// =========================
 	// Response
@@ -199,6 +202,8 @@ func CreatePaket(c *gin.Context) {
 
 func GetAllPaket(c *gin.Context) {
 
+	_ = helpers.SyncFinishedPaket()
+
 	var paket []models.PaketUmroh
 
 	if err := config.DB.
@@ -212,6 +217,10 @@ func GetAllPaket(c *gin.Context) {
 		})
 		return
 	}
+
+	// Urutan: Berjalan → Belum Berangkat → Selesai (satu tabel, hanya urutan data)
+	now := time.Now()
+	helpers.SortPaketByPerjalanan(paket, now)
 
 	// Kumpulkan ID paket
 	var paketIDs []interface{}
@@ -266,12 +275,27 @@ func GetAllPaket(c *gin.Context) {
 		}
 	}
 
+	// Embed model agar bentuk JSON lama tetap sama + tambah status_perjalanan (computed)
+	type paketAdminItem struct {
+		models.PaketUmroh
+		StatusPerjalanan string `json:"status_perjalanan"`
+	}
+	items := make([]paketAdminItem, 0, len(paket))
+	for _, p := range paket {
+		items = append(items, paketAdminItem{
+			PaketUmroh:       p,
+			StatusPerjalanan: helpers.PaketStatusPerjalanan(p, now),
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"paket": paket,
+		"paket": items,
 	})
 }
 
 func GetPaketByID(c *gin.Context) {
+
+	_ = helpers.SyncFinishedPaket()
 
 	id := c.Param("id")
 
@@ -355,13 +379,16 @@ func GetPaketByID(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"paket":        paket,
-		"gambar_paket": gambarPaketResp,
+		"paket":             paket,
+		"status_perjalanan": helpers.PaketStatusPerjalanan(paket, time.Now()),
+		"gambar_paket":      gambarPaketResp,
 		"fasilitas":    fasilitasResp,
 	})
 }
 
 func UpdatePaket(c *gin.Context) {
+
+	_ = helpers.SyncFinishedPaket()
 
 	id := c.Param("id")
 
@@ -536,6 +563,10 @@ func UpdatePaket(c *gin.Context) {
 	paket.KuotaMax = kuotaMax
 	paket.BatasPendaftaran = batasPendaftaran
 
+	// Rule: paket selesai tidak boleh aktif (update tidak boleh menghasilkan finished+active)
+	if paket.IsFinished {
+		paket.IsActive = false
+	}
 
 	if err := config.DB.
 		Save(&paket).Error; err != nil {
@@ -605,6 +636,8 @@ func DeletePaket(c *gin.Context) {
 // beserta statistik dan daftar seluruh jamaah yang mengambil paket tersebut.
 // Endpoint: GET /admin/paket/:id/detail
 func GetDetailPaketAdmin(c *gin.Context) {
+
+	_ = helpers.SyncFinishedPaket()
 
 	id := c.Param("id")
 
@@ -771,6 +804,7 @@ func GetDetailPaketAdmin(c *gin.Context) {
 			"is_aktif":          paket.IsActive,
 			"is_active":         paket.IsActive,
 			"is_finished":       paket.IsFinished,
+			"status_perjalanan": helpers.PaketStatusPerjalanan(paket, time.Now()),
 		},
 		"fasilitas": fasilitasResp,
 		"statistik": gin.H{
@@ -789,6 +823,8 @@ func GetDetailPaketAdmin(c *gin.Context) {
 // Mengubah status aktif/nonaktif paket.
 // Paket tidak dapat dinonaktifkan jika masih ada jamaah dengan status berjalan.
 func ToggleStatusPaket(c *gin.Context) {
+	_ = helpers.SyncFinishedPaket()
+
 	id := c.Param("id")
 
 	var paket models.PaketUmroh
@@ -802,6 +838,14 @@ func ToggleStatusPaket(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Format request tidak valid"})
+		return
+	}
+
+	// Paket selesai tidak boleh diaktifkan kembali
+	if req.IsActive && (paket.IsFinished || helpers.PaketTelahLewat(paket, time.Now())) {
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "Paket yang sudah selesai tidak dapat diaktifkan kembali.",
+		})
 		return
 	}
 
@@ -858,8 +902,9 @@ func FinishPaket(c *gin.Context) {
 		return
 	}
 
-	// Tandai paket selesai
-	if err := config.DB.Model(&paket).Update("is_finished", true).Error; err != nil {
+	// Tandai paket selesai + otomatis nonaktif (konsisten dengan auto-finish)
+	if err := config.DB.Model(&paket).
+		Updates(map[string]interface{}{"is_finished": true, "is_active": false}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menandai paket selesai"})
 		return
 	}

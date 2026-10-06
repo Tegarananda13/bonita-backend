@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"bonita-backend/config"
+	"bonita-backend/helpers"
 	"bonita-backend/models"
 
 	"github.com/gin-gonic/gin"
@@ -13,6 +14,8 @@ import (
 // GetPaket — GET /paket
 // Mengembalikan daftar paket aktif + foto utama per paket.
 func GetPaket(c *gin.Context) {
+
+	_ = helpers.SyncFinishedPaket()
 
 	var paketList []models.PaketUmroh
 
@@ -97,6 +100,8 @@ func GetPaket(c *gin.Context) {
 // GetDetailPaket — GET /paket/:id
 // Mengembalikan detail paket + semua foto paket + fasilitas + foto fasilitas.
 func GetDetailPaket(c *gin.Context) {
+
+	_ = helpers.SyncFinishedPaket()
 
 	id := c.Param("id")
 

@@ -146,6 +146,8 @@ func CreatePendaftaran(c *gin.Context) {
 		return
 	}
 
+	_ = helpers.SyncFinishedPaket()
+
 	var paket models.PaketUmroh
 	if err := config.DB.First(&paket, "id = ?", paketID).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Paket tidak ditemukan"})
