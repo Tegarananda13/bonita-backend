@@ -24,62 +24,10 @@ import (
 // 4. lengkap: seluruh dokumen wajib sudah diverifikasi dan berstatus diterima
 // 5. belum_lengkap: seluruh dokumen terunggah sudah diverifikasi (diterima), tetapi persyaratan dokumen wajib belum lengkap
 func recalcDocumentStatus(nomorPendaftaran string) string {
-	requiredDocs := []string{"paspor", "ktp", "kartu_keluarga", "akta_lahir", "vaksin", "foto", "pas_foto"}
-
 	var dokumenList []models.Dokumen
 	config.DB.Where("nomor_pendaftaran = ?", nomorPendaftaran).Order("created_at ASC").Find(&dokumenList)
 
-	if len(dokumenList) == 0 {
-		config.DB.
-			Model(&models.Pendaftaran{}).
-			Where("nomor_pendaftaran = ?", nomorPendaftaran).
-			Update("document_status", helpers.DocumentBelum)
-
-		helpers.UpdateStatusPendaftaran(nomorPendaftaran)
-		return helpers.DocumentBelum
-	}
-
-	docStatus := make(map[string]string)
-	for _, d := range dokumenList {
-		docStatus[d.JenisDokumen] = d.StatusValidasi
-	}
-
-	hasPending := false
-	hasDitolak := false
-
-	for _, s := range docStatus {
-		if s == helpers.PaymentVerificationPending {
-			hasPending = true
-		}
-		if s == helpers.PaymentVerificationDitolak {
-			hasDitolak = true
-		}
-	}
-
-	var documentStatus string
-
-	if hasPending {
-		// Menunggu verifikasi admin atas dokumen yang baru diupload / revisi
-		documentStatus = helpers.DocumentPending
-	} else if hasDitolak {
-		// Admin telah memeriksa dan ada dokumen yang ditolak (perlu revisi)
-		documentStatus = helpers.DocumentRevisi
-	} else {
-		// Tidak ada yang pending maupun ditolak, periksa kelengkapan seluruh dokumen wajib
-		allComplete := true
-		for _, doc := range requiredDocs {
-			s, exists := docStatus[doc]
-			if !exists || s != helpers.PaymentVerificationDiterima {
-				allComplete = false
-				break
-			}
-		}
-		if allComplete {
-			documentStatus = helpers.DocumentLengkap
-		} else {
-			documentStatus = helpers.DocumentBelumLengkap
-		}
-	}
+	documentStatus := helpers.CalculateDocumentStatus(dokumenList)
 
 	config.DB.
 		Model(&models.Pendaftaran{}).
@@ -325,19 +273,21 @@ func AdminUploadDokumen(c *gin.Context) {
 			_ = helpers.DeleteFromSupabase(existing.FilePath, "dokumen")
 			existing.FilePath = fileURL
 			existing.StatusValidasi = helpers.PaymentVerificationDiterima
+			existing.AlasanPenolakan = ""
 			existing.CreatedAt = time.Now()
 			if err := config.DB.Save(&existing).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui dokumen"})
 				return
 			}
-			recalcDocumentStatus(pendaftaran.NomorPendaftaran)
+			docStatus := recalcDocumentStatus(pendaftaran.NomorPendaftaran)
 			c.JSON(http.StatusOK, gin.H{
 				"message": "Dokumen berhasil diupload",
 				"data": gin.H{
-					"id":     existing.ID,
-					"jenis":  existing.JenisDokumen,
-					"status": existing.StatusValidasi,
-					"file":   existing.FilePath,
+					"id":              existing.ID,
+					"jenis":           existing.JenisDokumen,
+					"status":          existing.StatusValidasi,
+					"file":            existing.FilePath,
+					"document_status": docStatus,
 				},
 			})
 			return
@@ -357,15 +307,16 @@ func AdminUploadDokumen(c *gin.Context) {
 		return
 	}
 
-	recalcDocumentStatus(pendaftaran.NomorPendaftaran)
+	docStatus := recalcDocumentStatus(pendaftaran.NomorPendaftaran)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Dokumen berhasil diupload",
 		"data": gin.H{
-			"id":     dokumen.ID,
-			"jenis":  dokumen.JenisDokumen,
-			"status": dokumen.StatusValidasi,
-			"file":   dokumen.FilePath,
+			"id":              dokumen.ID,
+			"jenis":           dokumen.JenisDokumen,
+			"status":          dokumen.StatusValidasi,
+			"file":            dokumen.FilePath,
+			"document_status": docStatus,
 		},
 	})
 }
@@ -407,15 +358,16 @@ func AdminUpdateDokumen(c *gin.Context) {
 		return
 	}
 
-	recalcDocumentStatus(dokumen.NomorPendaftaran)
+	docStatus := recalcDocumentStatus(dokumen.NomorPendaftaran)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Dokumen berhasil diupdate",
 		"data": gin.H{
-			"id":     dokumen.ID,
-			"jenis":  dokumen.JenisDokumen,
-			"status": dokumen.StatusValidasi,
-			"file":   dokumen.FilePath,
+			"id":              dokumen.ID,
+			"jenis":           dokumen.JenisDokumen,
+			"status":          dokumen.StatusValidasi,
+			"file":            dokumen.FilePath,
+			"document_status": docStatus,
 		},
 	})
 }
@@ -443,6 +395,9 @@ func AdminDeleteDokumen(c *gin.Context) {
 		return
 	}
 
-	recalcDocumentStatus(nomorPendaftaran)
-	c.JSON(http.StatusOK, gin.H{"message": "Dokumen berhasil dihapus"})
+	docStatus := recalcDocumentStatus(nomorPendaftaran)
+	c.JSON(http.StatusOK, gin.H{
+		"message":         "Dokumen berhasil dihapus",
+		"document_status": docStatus,
+	})
 }

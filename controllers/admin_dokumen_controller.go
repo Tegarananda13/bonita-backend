@@ -5,6 +5,7 @@ import (
 	"bonita-backend/helpers"
 	"bonita-backend/models"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,6 +16,7 @@ func VerifikasiDokumen(c *gin.Context) {
 
 	var req struct {
 		Status string `json:"status" binding:"required"`
+		Alasan string `json:"alasan"`
 	}
 
 	// validasi body
@@ -47,12 +49,29 @@ func VerifikasiDokumen(c *gin.Context) {
 		return
 	}
 
+	// alasan wajib saat menolak; dikosongkan saat diterima
+	alasan := strings.TrimSpace(req.Alasan)
+	if req.Status == helpers.PaymentVerificationDitolak {
+		if alasan == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Alasan penolakan wajib diisi",
+			})
+			return
+		}
+	} else {
+		alasan = ""
+	}
+
 	// update status dokumen
 	dokumen.StatusValidasi = req.Status
+	dokumen.AlasanPenolakan = alasan
 
 	if err := config.DB.
 		Model(&dokumen).
-		Update("status_validasi", dokumen.StatusValidasi).Error; err != nil {
+		Updates(map[string]interface{}{
+			"status_validasi":  dokumen.StatusValidasi,
+			"alasan_penolakan": dokumen.AlasanPenolakan,
+		}).Error; err != nil {
 
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Gagal update status dokumen",
@@ -73,6 +92,7 @@ func VerifikasiDokumen(c *gin.Context) {
 		"data": gin.H{
 			"id":              dokumen.ID,
 			"status":          dokumen.StatusValidasi,
+			"alasan_penolakan": dokumen.AlasanPenolakan,
 			"document_status": documentStatus,
 			"pending_count":   countMenunggu,
 		},
@@ -103,6 +123,7 @@ func GetDetailDokumen(c *gin.Context) {
 			"JenisDokumen":   dokumen.JenisDokumen,
 			"FilePath":       dokumen.FilePath,
 			"StatusValidasi": dokumen.StatusValidasi,
+			"AlasanPenolakan": dokumen.AlasanPenolakan,
 			"CreatedAt":      dokumen.CreatedAt,
 			"Pendaftaran": gin.H{
 				"NomorPendaftaran": dokumen.Pendaftaran.NomorPendaftaran,

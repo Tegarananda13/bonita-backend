@@ -299,12 +299,17 @@ func GetPembayaran(c *gin.Context) {
 		if p.Status == helpers.PaymentVerificationDiterima {
 			totalDibayar += p.Jumlah
 		}
+		alasan := ""
+		if p.Status == helpers.PaymentVerificationDitolak {
+			alasan = p.AlasanPenolakan
+		}
 		result = append(result, gin.H{
-			"id":      p.ID,
-			"jumlah":  p.Jumlah,
-			"status":  p.Status,
-			"tanggal": p.TanggalBayar,
-			"bukti":   p.BuktiPembayaran,
+			"id":               p.ID,
+			"jumlah":           p.Jumlah,
+			"status":           p.Status,
+			"tanggal":          p.TanggalBayar,
+			"bukti":            p.BuktiPembayaran,
+			"alasan_penolakan": alasan,
 		})
 	}
 
@@ -337,6 +342,25 @@ func UploadBuktiPembayaran(c *gin.Context) {
 		return
 	}
 
+	// Pembayaran harus milik invoice dari pendaftaran di token (cegah akses silang)
+	pembayaranID := c.Param("id")
+
+	var pembayaran models.Pembayaran
+	if err := config.DB.
+		Where("id = ? AND nomor_invoice = ?", pembayaranID, pendaftaran.NomorInvoice).
+		First(&pembayaran).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pembayaran tidak ditemukan"})
+		return
+	}
+
+	// Upload pertama (belum ada bukti) atau penggantian bukti yang ditolak.
+	// Bukti yang sedang menunggu / sudah diterima tidak boleh diganti.
+	isReplace := pembayaran.Status == helpers.PaymentVerificationDitolak
+	if pembayaran.BuktiPembayaran != "" && !isReplace {
+		c.JSON(http.StatusConflict, gin.H{"error": "Bukti pembayaran hanya dapat diganti jika ditolak oleh admin"})
+		return
+	}
+
 	fileHeader, err := c.FormFile("bukti")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "File bukti wajib diupload"})
@@ -357,21 +381,20 @@ func UploadBuktiPembayaran(c *gin.Context) {
 		return
 	}
 
-	pembayaranID := c.Param("id")
-
-	var pembayaran models.Pembayaran
-	if err := config.DB.
-		Where("id = ? AND nomor_invoice = ?", pembayaranID, pendaftaran.NomorInvoice).
-		First(&pembayaran).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Pembayaran tidak ditemukan"})
-		return
+	// File baru sudah tersimpan → baru update database
+	oldFile := pembayaran.BuktiPembayaran
+	updates := map[string]interface{}{"bukti_pembayaran": fileURL}
+	if isReplace {
+		updates["status"] = helpers.PaymentVerificationPending
+		updates["alasan_penolakan"] = ""
 	}
-
-	if err := config.DB.
-		Model(&pembayaran).
-		Update("bukti_pembayaran", fileURL).Error; err != nil {
+	if err := config.DB.Model(&pembayaran).Updates(updates).Error; err != nil {
+		_ = helpers.DeleteFromSupabase(fileURL, "pembayaran") // rollback file baru
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal update bukti pembayaran"})
 		return
+	}
+	if isReplace && oldFile != "" {
+		_ = helpers.DeleteFromSupabase(oldFile, "pembayaran")
 	}
 
 	c.JSON(http.StatusOK, gin.H{

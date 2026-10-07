@@ -13,6 +13,7 @@ type Dokumen struct {
 	JenisDokumen     string
 	FilePath         string
 	StatusValidasi   string
+	AlasanPenolakan  string `gorm:"type:text"` // diisi admin saat menolak; dikosongkan saat diterima / diganti
 	CreatedAt        time.Time
 
 	// Relasi — constraint:false agar GORM tidak auto-create FK (sudah dibuat manual)

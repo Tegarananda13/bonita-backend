@@ -5,6 +5,7 @@ import (
 	"bonita-backend/helpers"
 	"bonita-backend/models"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,6 +15,7 @@ func VerifikasiPembayaran(c *gin.Context) {
 
 	var req struct {
 		Status string `json:"status" binding:"required"`
+		Alasan string `json:"alasan"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -37,13 +39,28 @@ func VerifikasiPembayaran(c *gin.Context) {
 		return
 	}
 
+	// alasan wajib saat menolak; dikosongkan saat diterima
+	alasan := strings.TrimSpace(req.Alasan)
+	if req.Status == helpers.PaymentVerificationDitolak {
+		if alasan == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Alasan penolakan wajib diisi"})
+			return
+		}
+	} else {
+		alasan = ""
+	}
+
 	if err := config.DB.
 		Model(&pembayaran).
-		Update("status", req.Status).Error; err != nil {
+		Updates(map[string]interface{}{
+			"status":           req.Status,
+			"alasan_penolakan": alasan,
+		}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal update status pembayaran"})
 		return
 	}
 	pembayaran.Status = req.Status
+	pembayaran.AlasanPenolakan = alasan
 
 	// Recalc Invoice dan status pendaftaran
 	if pembayaran.Status == helpers.PaymentVerificationDiterima ||
@@ -61,6 +78,7 @@ func VerifikasiPembayaran(c *gin.Context) {
 		"data": gin.H{
 			"id":            pembayaran.ID,
 			"status":        pembayaran.Status,
+			"alasan_penolakan": pembayaran.AlasanPenolakan,
 			"pending_count": countMenunggu,
 		},
 	})
@@ -102,6 +120,7 @@ func GetDetailPembayaran(c *gin.Context) {
 			"TanggalBayar":    pembayaran.TanggalBayar,
 			"BuktiPembayaran": pembayaran.BuktiPembayaran,
 			"Status":          pembayaran.Status,
+			"AlasanPenolakan": pembayaran.AlasanPenolakan,
 			"Invoice": gin.H{
 				"NomorInvoice":     pembayaran.Invoice.NomorInvoice,
 				"TotalTagihan":     pembayaran.Invoice.TotalTagihan,

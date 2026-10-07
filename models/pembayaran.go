@@ -14,6 +14,7 @@ type Pembayaran struct {
 	TanggalBayar    time.Time
 	BuktiPembayaran string
 	Status          string
+	AlasanPenolakan string `gorm:"type:text"` // diisi admin saat menolak; dikosongkan saat diterima / diganti
 
 	// Relasi
 	Invoice Invoice `gorm:"foreignKey:NomorInvoice;references:NomorInvoice" json:"-"`

@@ -79,6 +79,44 @@ func UploadDokumen(c *gin.Context) {
 	}
 	// ──────────────────────────────────────────────────────────────────────────
 
+	// ── Tentukan apakah ini upload baru atau penggantian dokumen yang ditolak ──
+	// Penggantian: kirim "dokumen_id" (harus milik pendaftaran di token) atau, untuk jenis
+	// selain "lainnya", otomatis jika semua dokumen jenis tsb berstatus ditolak.
+	// Dokumen yang masih menunggu / sudah diterima tidak boleh diganti.
+	var target *models.Dokumen
+	if dokumenID := c.PostForm("dokumen_id"); dokumenID != "" {
+		var d models.Dokumen
+		if err := config.DB.
+			Where("id = ? AND nomor_pendaftaran = ?", dokumenID, pendaftaran.NomorPendaftaran).
+			First(&d).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Dokumen tidak ditemukan"})
+			return
+		}
+		if d.JenisDokumen != jenis {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Jenis dokumen tidak sesuai"})
+			return
+		}
+		if d.StatusValidasi != helpers.PaymentVerificationDitolak {
+			c.JSON(http.StatusConflict, gin.H{"error": "Dokumen hanya dapat diganti jika berstatus ditolak"})
+			return
+		}
+		target = &d
+	} else if jenis != "lainnya" {
+		var existing []models.Dokumen
+		config.DB.
+			Where("nomor_pendaftaran = ? AND jenis_dokumen = ?", pendaftaran.NomorPendaftaran, jenis).
+			Order("created_at DESC").Find(&existing)
+		for i := range existing {
+			if existing[i].StatusValidasi != helpers.PaymentVerificationDitolak {
+				c.JSON(http.StatusConflict, gin.H{"error": "Dokumen ini sudah diunggah dan tidak dapat diganti kecuali ditolak oleh admin"})
+				return
+			}
+		}
+		if len(existing) > 0 {
+			target = &existing[0]
+		}
+	}
+
 	// ambil file
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
@@ -104,38 +142,65 @@ func UploadDokumen(c *gin.Context) {
 		return
 	}
 
-	// simpan database
-	dokumen := models.Dokumen{
-		NomorPendaftaran: pendaftaran.NomorPendaftaran,
-		JenisDokumen:     jenis,
-		FilePath:         fileURL,
-		StatusValidasi:   "pending",
-		CreatedAt:        time.Now(),
+	// File baru sudah tersimpan di storage; baru sekarang database diperbarui.
+	var dokumen models.Dokumen
+	statusCode := http.StatusCreated
+	if target != nil {
+		oldFile := target.FilePath
+		if err := config.DB.Model(target).Updates(map[string]interface{}{
+			"file_path":        fileURL,
+			"status_validasi":  helpers.PaymentVerificationPending,
+			"alasan_penolakan": "",
+			"created_at":       time.Now(),
+		}).Error; err != nil {
+			_ = helpers.DeleteFromSupabase(fileURL, "dokumen") // rollback file baru
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan dokumen"})
+			return
+		}
+		dokumen = *target
+		dokumen.FilePath = fileURL
+		dokumen.StatusValidasi = helpers.PaymentVerificationPending
+		statusCode = http.StatusOK
+		// file lama tidak lagi dipakai → hapus (best-effort) setelah file baru aman
+		if oldFile != "" {
+			_ = helpers.DeleteFromSupabase(oldFile, "dokumen")
+		}
+	} else {
+		dokumen = models.Dokumen{
+			NomorPendaftaran: pendaftaran.NomorPendaftaran,
+			JenisDokumen:     jenis,
+			FilePath:         fileURL,
+			StatusValidasi:   "pending",
+			CreatedAt:        time.Now(),
+		}
+
+		if err := config.DB.Create(&dokumen).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan dokumen"})
+			return
+		}
 	}
 
-	if err := config.DB.Create(&dokumen).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan dokumen"})
-		return
-	}
+	// Update status pendaftaran dan hitung ulang kelengkapan dokumen
+	docStatus := recalcDocumentStatus(pendaftaran.NomorPendaftaran)
 
-	// Update status pendaftaran menjadi pending (menunggu verifikasi admin)
-	recalcDocumentStatus(pendaftaran.NomorPendaftaran)
-
-	c.JSON(http.StatusCreated, gin.H{
+	c.JSON(statusCode, gin.H{
 		"message": "Dokumen berhasil diupload",
 		"data": gin.H{
-			"id":     dokumen.ID,
-			"jenis":  dokumen.JenisDokumen,
-			"status": dokumen.StatusValidasi,
-			"file":   dokumen.FilePath,
+			"id":              dokumen.ID,
+			"jenis":           dokumen.JenisDokumen,
+			"status":          dokumen.StatusValidasi,
+			"file":            dokumen.FilePath,
+			"document_status": docStatus,
 		},
 	})
 }
 
-
 func GetDokumen(c *gin.Context) {
 
 	nomor := c.MustGet("pendaftaran_id").(string)
+
+	var pendaftaran models.Pendaftaran
+	config.DB.Select("document_status").Where("nomor_pendaftaran = ?", nomor).First(&pendaftaran)
 
 	var dokumen []models.Dokumen
 
@@ -164,6 +229,13 @@ func GetDokumen(c *gin.Context) {
 			"status":      d.StatusValidasi,
 			"file":        d.FilePath,
 			"uploaded_at": d.CreatedAt,
+			// alasan hanya relevan saat ditolak
+			"alasan_penolakan": func() string {
+				if d.StatusValidasi == helpers.PaymentVerificationDitolak {
+					return d.AlasanPenolakan
+				}
+				return ""
+			}(),
 		}
 		result = append(result, item)
 		if travelDocs[d.JenisDokumen] {
@@ -177,6 +249,7 @@ func GetDokumen(c *gin.Context) {
 		"dokumen":             result,
 		"dokumen_persyaratan": persyaratan,
 		"dokumen_perjalanan":  perjalanan,
+		"document_status":     pendaftaran.DocumentStatus,
 	})
 }
 
