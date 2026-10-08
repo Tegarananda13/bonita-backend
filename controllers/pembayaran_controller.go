@@ -14,44 +14,9 @@ import (
 )
 
 // recalcInvoiceStatus menghitung ulang StatusPembayaran dan TotalPembayaran
-// pada Invoice berdasarkan seluruh pembayaran yang sudah diterima.
-// Phase 6B: parameter diubah dari UUID ke nomor_invoice (business key).
+// pada Invoice dan menyinkronkan status pendaftaran seluruh grup jamaah.
 func recalcInvoiceStatus(nomorInvoice string) {
-	var invoice models.Invoice
-	if err := config.DB.Where("nomor_invoice = ?", nomorInvoice).First(&invoice).Error; err != nil {
-		return
-	}
-
-	var totalDiterima float64
-	config.DB.
-		Model(&models.Pembayaran{}).
-		Where("nomor_invoice = ? AND status = ?", nomorInvoice, helpers.PaymentVerificationDiterima).
-		Select("COALESCE(SUM(jumlah),0)").
-		Scan(&totalDiterima)
-
-	invoice.TotalPembayaran = totalDiterima
-
-	var newStatus string
-	if totalDiterima <= 0 {
-		newStatus = models.InvoiceStatusBelumBayar
-	} else if totalDiterima >= invoice.TotalTagihan {
-		newStatus = models.InvoiceStatusLunas
-	} else {
-		newStatus = models.InvoiceStatusDP
-	}
-	invoice.StatusPembayaran = newStatus
-
-	config.DB.Model(&invoice).Updates(map[string]interface{}{
-		"total_pembayaran":  invoice.TotalPembayaran,
-		"status_pembayaran": invoice.StatusPembayaran,
-	})
-
-	// update status semua pendaftaran yang terhubung ke invoice ini
-	var pendaftaranList []models.Pendaftaran
-	config.DB.Where("nomor_invoice = ?", nomorInvoice).Find(&pendaftaranList)
-	for _, p := range pendaftaranList {
-		helpers.UpdateStatusPendaftaran(p.NomorPendaftaran)
-	}
+	helpers.SyncPendaftaranStatus(nomorInvoice)
 }
 
 func CreatePembayaran(c *gin.Context) {
@@ -129,6 +94,9 @@ func CreatePembayaran(c *gin.Context) {
 
 func GetCustomerDashboard(c *gin.Context) {
 	nomor := c.MustGet("pendaftaran_id").(string)
+
+	// Pastikan status sinkron sebelum mengembalikan data dashboard
+	helpers.SyncPendaftaranStatusByNomor(nomor)
 
 	var pendaftaran models.Pendaftaran
 	if err := config.DB.
@@ -400,5 +368,33 @@ func UploadBuktiPembayaran(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Bukti pembayaran berhasil diupload",
 		"file":    fileURL,
+	})
+}
+
+// GetCustomerPendaftaranStatus mengembalikan status terkini pendaftaran untuk customer portal
+func GetCustomerPendaftaranStatus(c *gin.Context) {
+	nomor := c.MustGet("pendaftaran_id").(string)
+	helpers.SyncPendaftaranStatusByNomor(nomor)
+
+	var p models.Pendaftaran
+	if err := config.DB.
+		Preload("Invoice").
+		Where("nomor_pendaftaran = ?", nomor).
+		First(&p).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
+		return
+	}
+
+	paymentStatus := helpers.PaymentBelum
+	if p.NomorInvoice != "" {
+		paymentStatus = p.Invoice.StatusPembayaran
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"nomor_pendaftaran": p.NomorPendaftaran,
+		"nomor_invoice":     p.NomorInvoice,
+		"status":            p.Status,
+		"document_status":   p.DocumentStatus,
+		"payment_status":    paymentStatus,
 	})
 }

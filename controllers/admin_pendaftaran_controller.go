@@ -125,6 +125,9 @@ func sortPendaftaran(list []models.Pendaftaran) {
 }
 
 func GetAllPendaftaran(c *gin.Context) {
+	// Sinkronisasi status pendaftaran aktif sebelum mengambil data
+	helpers.SyncActivePendaftaran()
+
 	var pendaftaran []models.Pendaftaran
 
 	if err := config.DB.
@@ -181,6 +184,9 @@ func GetPendaftaranSaya(c *gin.Context) {
 		return
 	}
 
+	// Sinkronisasi status pendaftaran aktif sebelum mengambil data
+	helpers.SyncActivePendaftaran()
+
 	var pendaftaran []models.Pendaftaran
 
 	if err := config.DB.
@@ -217,6 +223,9 @@ func GetPendaftaranSaya(c *gin.Context) {
 
 func GetDetailPendaftaran(c *gin.Context) {
 	nomor := c.Param("nomor")
+
+	// Pastikan status grup dan dokumen pendaftaran ini tersinkronisasi
+	helpers.SyncPendaftaranStatusByNomor(nomor)
 
 	var pendaftaran models.Pendaftaran
 	if err := config.DB.
@@ -374,5 +383,29 @@ func TandaiSelesai(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Jamaah berhasil ditandai selesai.",
 		"data": gin.H{"nomor_pendaftaran": pendaftaran.NomorPendaftaran},
+	})
+}
+
+// GetPendaftaranStatus — GET /admin/pendaftaran/:nomor/status
+// Mengembalikan status terkini pendaftaran setelah sinkronisasi otomatis
+func GetPendaftaranStatus(c *gin.Context) {
+	nomor := c.Param("nomor")
+	helpers.SyncPendaftaranStatusByNomor(nomor)
+
+	var p models.Pendaftaran
+	if err := config.DB.
+		Preload("Invoice").
+		Where("nomor_pendaftaran = ?", nomor).
+		First(&p).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"nomor_pendaftaran": p.NomorPendaftaran,
+		"nomor_invoice":     p.NomorInvoice,
+		"status":            p.Status,
+		"document_status":   p.DocumentStatus,
+		"payment_status":    paymentStatusFromPendaftaran(p),
 	})
 }
