@@ -16,19 +16,19 @@ import (
 // TestDetermineGroupMainStatus_UnitTests menguji logic aturan status utama
 // untuk pendaftaran individu dan grup (Test 1 - Test 6 & Test 8).
 func TestDetermineGroupMainStatus_UnitTests(t *testing.T) {
-	// Test 1: Individu lengkap dan lunas -> siap_berangkat
+	// Test 1: Individu lengkap dan lunas -> menunggu_verifikasi_manager
 	t.Run("Test1_Individu_Lengkap_Dan_Lunas", func(t *testing.T) {
 		status := helpers.DetermineGroupMainStatus(true, true)
-		if status != helpers.StatusSiapBerangkat {
-			t.Errorf("Expected '%s', got '%s'", helpers.StatusSiapBerangkat, status)
+		if status != helpers.StatusMenungguVerifikasiManager {
+			t.Errorf("Expected '%s', got '%s'", helpers.StatusMenungguVerifikasiManager, status)
 		}
 	})
 
 	// Test 2: Individu belum lunas -> bukan siap_berangkat (menunggu_pembayaran)
 	t.Run("Test2_Individu_Belum_Lunas", func(t *testing.T) {
 		status := helpers.DetermineGroupMainStatus(false, true)
-		if status == helpers.StatusSiapBerangkat {
-			t.Errorf("Expected NOT '%s', got '%s'", helpers.StatusSiapBerangkat, status)
+		if status == helpers.StatusSiapBerangkat || status == helpers.StatusMenungguVerifikasiManager {
+			t.Errorf("Expected NOT ready, got '%s'", status)
 		}
 		if status != helpers.StatusMenungguPembayaran {
 			t.Errorf("Expected '%s', got '%s'", helpers.StatusMenungguPembayaran, status)
@@ -38,58 +38,58 @@ func TestDetermineGroupMainStatus_UnitTests(t *testing.T) {
 	// Test 3: Individu dokumen belum lengkap -> bukan siap_berangkat (menunggu_dokumen)
 	t.Run("Test3_Individu_Dokumen_Belum_Lengkap", func(t *testing.T) {
 		status := helpers.DetermineGroupMainStatus(true, false)
-		if status == helpers.StatusSiapBerangkat {
-			t.Errorf("Expected NOT '%s', got '%s'", helpers.StatusSiapBerangkat, status)
+		if status == helpers.StatusSiapBerangkat || status == helpers.StatusMenungguVerifikasiManager {
+			t.Errorf("Expected NOT ready, got '%s'", status)
 		}
 		if status != helpers.StatusMenungguDokumen {
 			t.Errorf("Expected '%s', got '%s'", helpers.StatusMenungguDokumen, status)
 		}
 	})
 
-	// Test 4: Grup semua lengkap dan lunas -> siap_berangkat
+	// Test 4: Grup semua lengkap dan lunas -> menunggu_verifikasi_manager
 	t.Run("Test4_Grup_Semua_Lengkap_Dan_Lunas", func(t *testing.T) {
 		// 3 jamaah: Jamaah A (lengkap), Jamaah B (lengkap), Jamaah C (lengkap)
 		allDocsLengkap := true
 		invoiceLunas := true
 		status := helpers.DetermineGroupMainStatus(invoiceLunas, allDocsLengkap)
-		if status != helpers.StatusSiapBerangkat {
-			t.Errorf("Expected '%s', got '%s'", helpers.StatusSiapBerangkat, status)
+		if status != helpers.StatusMenungguVerifikasiManager {
+			t.Errorf("Expected '%s', got '%s'", helpers.StatusMenungguVerifikasiManager, status)
 		}
 	})
 
-	// Test 5: Grup satu jamaah belum lengkap -> bukan siap_berangkat (menunggu_dokumen)
+	// Test 5: Grup satu jamaah belum lengkap -> bukan menunggu_verifikasi_manager (menunggu_dokumen)
 	t.Run("Test5_Grup_Satu_Jamaah_Belum_Lengkap", func(t *testing.T) {
 		// Jamaah A (lengkap), Jamaah B (lengkap), Jamaah C (belum lengkap) -> allDocsLengkap = false
 		allDocsLengkap := false
 		invoiceLunas := true
 		status := helpers.DetermineGroupMainStatus(invoiceLunas, allDocsLengkap)
-		if status == helpers.StatusSiapBerangkat {
-			t.Errorf("Expected NOT '%s', got '%s'", helpers.StatusSiapBerangkat, status)
+		if status == helpers.StatusSiapBerangkat || status == helpers.StatusMenungguVerifikasiManager {
+			t.Errorf("Expected NOT ready, got '%s'", status)
 		}
 		if status != helpers.StatusMenungguDokumen {
 			t.Errorf("Expected '%s', got '%s'", helpers.StatusMenungguDokumen, status)
 		}
 	})
 
-	// Test 6: Grup pembayaran belum lunas -> bukan siap_berangkat (menunggu_pembayaran)
+	// Test 6: Grup pembayaran belum lunas -> bukan menunggu_verifikasi_manager (menunggu_pembayaran)
 	t.Run("Test6_Grup_Pembayaran_Belum_Lunas", func(t *testing.T) {
 		// Semua jamaah lengkap, tetapi invoice belum lunas
 		allDocsLengkap := true
 		invoiceLunas := false
 		status := helpers.DetermineGroupMainStatus(invoiceLunas, allDocsLengkap)
-		if status == helpers.StatusSiapBerangkat {
-			t.Errorf("Expected NOT '%s', got '%s'", helpers.StatusSiapBerangkat, status)
+		if status == helpers.StatusSiapBerangkat || status == helpers.StatusMenungguVerifikasiManager {
+			t.Errorf("Expected NOT ready, got '%s'", status)
 		}
 		if status != helpers.StatusMenungguPembayaran {
 			t.Errorf("Expected '%s', got '%s'", helpers.StatusMenungguPembayaran, status)
 		}
 	})
 
-	// Test 8: Tidak perlu edit dokumen/pembayaran -> status langsung deterministik
+	// Test 8: Tidak perlu edit dokumen/pembayaran -> status langsung deterministik masuk antrean manager
 	t.Run("Test8_Deterministik_Tanpa_Perlu_Edit", func(t *testing.T) {
 		status := helpers.DetermineGroupMainStatus(true, true)
-		if status != helpers.StatusSiapBerangkat {
-			t.Errorf("Expected immediate '%s' without manual edits, got '%s'", helpers.StatusSiapBerangkat, status)
+		if status != helpers.StatusMenungguVerifikasiManager {
+			t.Errorf("Expected immediate '%s' without manual edits, got '%s'", helpers.StatusMenungguVerifikasiManager, status)
 		}
 	})
 }
@@ -127,6 +127,7 @@ func TestSyncPendaftaranStatus_DatabaseIntegration(t *testing.T) {
 		t.Skip("Could not connect to database, skipping DB integration test")
 		return
 	}
+	config.Migrate()
 
 	testInvoiceNo := "TEST-INV-" + uuid.New().String()[:8]
 	nomorA := "TEST-UMR-A-" + uuid.New().String()[:6]
@@ -261,15 +262,15 @@ func TestSyncPendaftaranStatus_DatabaseIntegration(t *testing.T) {
 	config.DB.Where("nomor_pendaftaran = ?", nomorB).First(&checkB)
 	config.DB.Where("nomor_pendaftaran = ?", nomorC).First(&checkC)
 
-	// Verifikasi Test 4 & Test 7: SEMUA 3 jamaah otomatis diperbaiki menjadi "siap_berangkat"!
-	if checkA.Status != helpers.StatusSiapBerangkat {
-		t.Errorf("Expected Jamaah A to be '%s', got '%s'", helpers.StatusSiapBerangkat, checkA.Status)
+	// Verifikasi: SEMUA 3 jamaah otomatis masuk antrean Manager ("menunggu_verifikasi_manager")!
+	if checkA.Status != helpers.StatusMenungguVerifikasiManager {
+		t.Errorf("Expected Jamaah A to be '%s', got '%s'", helpers.StatusMenungguVerifikasiManager, checkA.Status)
 	}
-	if checkB.Status != helpers.StatusSiapBerangkat {
-		t.Errorf("Expected Jamaah B to be '%s', got '%s'", helpers.StatusSiapBerangkat, checkB.Status)
+	if checkB.Status != helpers.StatusMenungguVerifikasiManager {
+		t.Errorf("Expected Jamaah B to be '%s', got '%s'", helpers.StatusMenungguVerifikasiManager, checkB.Status)
 	}
-	if checkC.Status != helpers.StatusSiapBerangkat {
-		t.Errorf("Expected Jamaah C to be '%s', got '%s'", helpers.StatusSiapBerangkat, checkC.Status)
+	if checkC.Status != helpers.StatusMenungguVerifikasiManager {
+		t.Errorf("Expected Jamaah C to be '%s', got '%s'", helpers.StatusMenungguVerifikasiManager, checkC.Status)
 	}
 
 	// Verifikasi document_status masing-masing jamaah juga tersinkronisasi menjadi "lengkap"
@@ -280,19 +281,27 @@ func TestSyncPendaftaranStatus_DatabaseIntegration(t *testing.T) {
 			checkA.DocumentStatus, checkB.DocumentStatus, checkC.DocumentStatus)
 	}
 
-	// Test 7: Kondisi sudah terpenuhi tetapi database sengaja stale ("proses")
-	// lalu fungsi sinkronisasi (seperti pada endpoint status/detail) dipanggil.
+	// Simulasi Manager Menyetujui pendaftaran
+	testManager := models.User{
+		ID:       uuid.New(),
+		Nama:     "Manager Test",
+		Username: "mgr_" + uuid.New().String()[:8],
+		Role:     "owner",
+		IsActive: true,
+	}
+	config.DB.Create(&testManager)
+	defer config.DB.Delete(&testManager)
+
+	now := time.Now()
 	config.DB.Model(&models.Pendaftaran{}).
 		Where("nomor_pendaftaran IN (?)", []string{nomorA, nomorB, nomorC}).
-		Update("status", helpers.StatusProses)
+		Updates(map[string]interface{}{
+			"status":      helpers.StatusSiapBerangkat,
+			"approved_by": testManager.ID,
+			"approved_at": now,
+		})
 
-	var checkStale models.Pendaftaran
-	config.DB.Where("nomor_pendaftaran = ?", nomorA).First(&checkStale)
-	if checkStale.Status != helpers.StatusProses {
-		t.Fatalf("Failed to simulate stale database condition")
-	}
-
-	// Simulasi pemanggilan endpoint / sync tanpa edit pembayaran atau dokumen
+	// Panggil sync lagi: pastikan status siap_berangkat tidak tertimpa kembali ke menunggu_verifikasi_manager
 	helpers.SyncPendaftaranStatusByNomor(nomorA)
 
 	config.DB.Where("nomor_pendaftaran = ?", nomorA).First(&checkA)
@@ -302,8 +311,7 @@ func TestSyncPendaftaranStatus_DatabaseIntegration(t *testing.T) {
 	if checkA.Status != helpers.StatusSiapBerangkat ||
 		checkB.Status != helpers.StatusSiapBerangkat ||
 		checkC.Status != helpers.StatusSiapBerangkat {
-		t.Errorf("Test 7: Expected status to be healed to '%s', got A=%s, B=%s, C=%s",
+		t.Errorf("Expected status to remain '%s' after manager approval, got A=%s, B=%s, C=%s",
 			helpers.StatusSiapBerangkat, checkA.Status, checkB.Status, checkC.Status)
 	}
 }
-

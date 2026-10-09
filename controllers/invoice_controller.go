@@ -23,6 +23,7 @@ func GetInvoice(c *gin.Context) {
 		Preload("Customer").
 		Preload("Paket").
 		Preload("Invoice").
+		Preload("Approver").
 		Where("nomor_pendaftaran = ?", nomor).First(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
 		return
@@ -104,6 +105,11 @@ func GetInvoice(c *gin.Context) {
 		}
 	}
 
+	var approvalHTML string
+	if pendaftaran.ApprovedAt != nil && pendaftaran.Approver != nil {
+		approvalHTML = buildApprovalHTML(pendaftaran.Approver.Nama, pendaftaran.ApprovedAt)
+	}
+
 	html := buildInvoiceHTML(
 		invoice.NomorInvoice,
 		formatTanggal(tanggalInvoice),
@@ -123,6 +129,7 @@ func GetInvoice(c *gin.Context) {
 		statusClass,
 		statusIcon(statusBayar),
 		statusBayar,
+		approvalHTML,
 	)
 
 	c.Header("Content-Type", "text/html; charset=utf-8")
@@ -151,6 +158,7 @@ func GetInvoiceAdmin(c *gin.Context) {
 	config.DB.
 		Preload("Customer").
 		Preload("Paket").
+		Preload("Approver").
 		Where("nomor_invoice = ?", nomorInvoice).
 		Order("tanggal_daftar ASC").
 		Find(&semuaPendaftaran)
@@ -216,6 +224,11 @@ func GetInvoiceAdmin(c *gin.Context) {
 		)
 	}
 
+	var approvalHTML string
+	if firstPendaftaran.ApprovedAt != nil && firstPendaftaran.Approver != nil {
+		approvalHTML = buildApprovalHTML(firstPendaftaran.Approver.Nama, firstPendaftaran.ApprovedAt)
+	}
+
 	html := buildInvoiceHTML(
 		invoice.NomorInvoice,
 		formatTanggal(tanggalInvoice),
@@ -235,6 +248,7 @@ func GetInvoiceAdmin(c *gin.Context) {
 		statusClass,
 		statusIcon(statusBayar),
 		statusBayar,
+		approvalHTML,
 	)
 
 	c.Header("Content-Type", "text/html; charset=utf-8")
@@ -315,6 +329,27 @@ func buildDaftarJamaahHTML(semuaPendaftaran []models.Pendaftaran) (string, int) 
 	return jamaahHTML.String(), jumlahAmbilPerlengkapan
 }
 
+func formatTanggalWIB(t time.Time) string {
+	wib := t.In(time.FixedZone("WIB", 7*3600))
+	months := []string{"", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+		"Juli", "Agustus", "September", "Oktober", "November", "Desember"}
+	return fmt.Sprintf("%d %s %d, %02d:%02d WIB",
+		wib.Day(), months[wib.Month()], wib.Year(), wib.Hour(), wib.Minute())
+}
+
+func buildApprovalHTML(approverNama string, approvedAt *time.Time) string {
+	if approverNama == "" || approvedAt == nil {
+		return ""
+	}
+	return fmt.Sprintf(`
+  <div class="inv-approval-stamp">
+    <div class="inv-approval-title">Diverifikasi dan disetujui oleh</div>
+    <div class="inv-approval-name">%s</div>
+    <div class="inv-approval-role">Administration Manager</div>
+    <div class="inv-approval-date">%s</div>
+  </div>`, approverNama, formatTanggalWIB(*approvedAt))
+}
+
 // buildInvoiceHTML membangun HTML invoice dengan template lengkap.
 func buildInvoiceHTML(
 	nomorInvoice string,
@@ -335,6 +370,7 @@ func buildInvoiceHTML(
 	statusClass string,
 	statusIco string,
 	statusLabel string,
+	approvalHTML string,
 ) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -381,6 +417,11 @@ body{font-family:'Inter',sans-serif;background:#f0f4f8;display:flex;justify-cont
 .status-lunas{background:#d1fae5;color:#065f46}
 .status-dp{background:#dbeafe;color:#1e40af}
 .status-pending{background:#fef3c7;color:#92400e}
+.inv-approval-stamp{margin-top:1.5rem;padding:1.25rem 1.5rem;background:#f0fdf4;border:1.5px dashed #059669;border-radius:12px;text-align:center}
+.inv-approval-title{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:.35rem}
+.inv-approval-name{font-size:1.1rem;font-weight:800;color:#065f46}
+.inv-approval-role{font-size:.82rem;font-weight:700;color:#0d9488;margin-top:.2rem}
+.inv-approval-date{font-size:.75rem;color:#64748b;margin-top:.35rem}
 .inv-footer{background:linear-gradient(135deg,#0a2e1c,#1a5c3d);padding:1.5rem 2.5rem;text-align:center}
 .inv-footer-text{font-size:.82rem;color:rgba(255,255,255,.65);line-height:1.6}
 .inv-footer-brand{font-size:.78rem;color:#e8c97e;font-weight:600;margin-top:.5rem}
@@ -417,6 +458,7 @@ body{font-family:'Inter',sans-serif;background:#f0f4f8;display:flex;justify-cont
     <div class="inv-paid-row"><div class="inv-paid-label">Total Dibayar</div><div class="inv-paid-amount">Rp %s</div></div>
     <div class="inv-status-row"><span class="status-badge %s">%s %s</span></div>
   </div>
+  %s
 </div>
 <div class="inv-footer"><div class="inv-footer-text">Terima kasih telah mempercayakan perjalanan ibadah Anda kepada<br><strong style="color:#e8c97e">Bonita Umroh</strong> — Melayani dengan hati, memberangkatkan dengan amanah.</div><div class="inv-footer-brand">📞 +62 823-1888-3430 &nbsp;|&nbsp; ✉️ info@bonitaumroh.com</div></div>
 <div class="print-btn-row"><button class="print-btn" onclick="window.print()">🖨️ Print / Save PDF</button><a class="close-btn" onclick="window.close()">✕ Tutup</a></div>
@@ -430,5 +472,6 @@ body{font-family:'Inter',sans-serif;background:#f0f4f8;display:flex;justify-cont
 		totalTagihan,
 		riwayatHTML, totalDibayar,
 		statusClass, statusIco, statusLabel,
+		approvalHTML,
 	)
 }

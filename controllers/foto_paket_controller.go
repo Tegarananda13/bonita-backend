@@ -119,7 +119,7 @@ func DeleteFotoPaket(c *gin.Context) {
 	}
 
 	wasUtama := foto.IsUtama
-	paketID  := foto.PaketID
+	paketID := foto.PaketID
 
 	if err := config.DB.Delete(&foto).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus foto"})
@@ -217,13 +217,13 @@ func GetFotoPaket(c *gin.Context) {
 		var paket models.PaketUmroh
 		if err := config.DB.Select("foto_paket").First(&paket, "id = ?", paketID).Error; err == nil && paket.FotoPaket != "" {
 			data = append(data, gin.H{
-				"id":         nil,
-				"paket_id":   paketID,
-				"file_path":  paket.FotoPaket,
-				"url":        paket.FotoPaket,
-				"urutan":     1,
-				"is_utama":   true,
-				"is_legacy":  true,
+				"id":        nil,
+				"paket_id":  paketID,
+				"file_path": paket.FotoPaket,
+				"url":       paket.FotoPaket,
+				"urutan":    1,
+				"is_utama":  true,
+				"is_legacy": true,
 			})
 		}
 	}

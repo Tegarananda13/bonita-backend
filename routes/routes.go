@@ -103,13 +103,13 @@ func SetupRoutes(r *gin.Engine) {
 		)
 	}
 	// ======================
-	// ADMIN & OWNER
+	// ADMIN & ADMINISTRATION MANAGER
 	// ======================
 
 	admin := r.Group("/admin")
 	admin.Use(
 		middleware.AuthMiddleware(),
-		middleware.RoleMiddleware("admin", "owner"),
+		middleware.RoleMiddleware("admin", "owner", "manager", "administration_manager"),
 	)
 
 	{
@@ -303,28 +303,44 @@ func SetupRoutes(r *gin.Engine) {
 		admin.PUT("/dokumen/:id/admin", controllers.AdminUpdateDokumen)
 		admin.DELETE("/dokumen/:id/admin", controllers.AdminDeleteDokumen)
 
+		// ── Ajukan Verifikasi ke Manager setelah perbaikan ──
+		admin.POST("/pendaftaran/:nomor/ajukan-verifikasi", controllers.AdminAjukanVerifikasi)
 	}
 
 	// ======================
-	// OWNER ONLY
+	// ADMINISTRATION MANAGER
 	// ======================
 
-	owner := r.Group("/owner")
-	owner.Use(
+	manager := r.Group("/manager")
+	manager.Use(
 		middleware.AuthMiddleware(),
-		middleware.RoleMiddleware("owner"),
+		middleware.RoleMiddleware("owner", "manager", "administration_manager"),
 	)
-
 	{
-		owner.POST("/admin", controllers.CreateAdmin)
-		owner.GET("/admin", controllers.GetAdminList)
-		owner.GET("/admin/:id", controllers.GetAdminDetail)
-		owner.PUT("/admin/:id", controllers.UpdateAdmin)
-		owner.PATCH("/admin/:id/deactivate", controllers.DeactivateAdmin)
-		owner.PATCH("/admin/:id/reactivate", controllers.ReactivateAdmin)
-		owner.DELETE("/admin/:id", controllers.DeleteAdmin)
+		// Manajemen Akun Admin
+		manager.POST("/admin", controllers.CreateAdmin)
+		manager.GET("/admin", controllers.GetAdminList)
+		manager.GET("/admin/:id", controllers.GetAdminDetail)
+		manager.PUT("/admin/:id", controllers.UpdateAdmin)
+		manager.PATCH("/admin/:id/deactivate", controllers.DeactivateAdmin)
+		manager.PATCH("/admin/:id/reactivate", controllers.ReactivateAdmin)
+		manager.DELETE("/admin/:id", controllers.DeleteAdmin)
 
-		// ── Laporan & Rekapitulasi ──
-		owner.GET("/laporan", controllers.GetLaporan)
+		// Laporan & Rekapitulasi
+		manager.GET("/laporan", controllers.GetLaporan)
+
+		// Verifikasi Final Pendaftaran
+		manager.GET("/verifikasi", controllers.GetManagerQueue)
+		manager.GET("/verifikasi/:nomor", controllers.GetManagerDetailVerifikasi)
+		manager.POST("/verifikasi/:nomor/approve", controllers.ManagerApprovePendaftaran)
+		manager.POST("/verifikasi/:nomor/perbaikan", controllers.ManagerMintaPerbaikan)
+
+		// Dokumen Perjalanan (Visa, Tiket, Nusuk)
+		manager.GET("/dokumen-perjalanan/:nomor", controllers.GetDokumenPerjalanan)
+		manager.POST("/pendaftaran/:nomor/dokumen-perjalanan", controllers.ManagerUploadDokumenPerjalanan)
+		manager.DELETE("/dokumen-perjalanan/:id", controllers.ManagerDeleteDokumenPerjalanan)
+
+		// Badges Manager
+		manager.GET("/badges", controllers.GetManagerBadges)
 	}
 }

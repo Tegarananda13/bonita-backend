@@ -2,8 +2,8 @@ package controllers
 
 import (
 	"bonita-backend/config"
-	"bonita-backend/models"
 	"bonita-backend/helpers"
+	"bonita-backend/models"
 	"net/http"
 	"time"
 
@@ -54,7 +54,7 @@ func Login(c *gin.Context) {
 	// Cek akun aktif (admin yang dinonaktifkan tidak boleh login)
 	if !user.IsActive {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error": "Akun Anda telah dinonaktifkan. Hubungi Owner untuk informasi lebih lanjut.",
+			"error": "Akun Anda telah dinonaktifkan. Hubungi Administration Manager untuk informasi lebih lanjut.",
 		})
 		return
 	}

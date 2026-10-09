@@ -53,7 +53,7 @@ func Seed() {
 	nomor1 := "UMR-SEED-0001"
 	pend1 := models.Pendaftaran{
 		NomorPendaftaran: nomor1,
-		CustomerNIK:      cust1.NIK,         // FK ke customer.nik
+		CustomerNIK:      cust1.NIK, // FK ke customer.nik
 		PaketID:          paket.ID,
 		NomorInvoice:     inv1.NomorInvoice, // Phase 6C: ganti InvoiceID ke NomorInvoice
 		DocumentStatus:   "belum",
@@ -110,7 +110,7 @@ func Seed() {
 	// Pendaftaran seed 2 & 3 (keduanya ke invoice yang sama)
 	pend2 := models.Pendaftaran{
 		NomorPendaftaran: "UMR-SEED-0002",
-		CustomerNIK:      cust2.NIK,         // FK ke customer.nik
+		CustomerNIK:      cust2.NIK, // FK ke customer.nik
 		PaketID:          paket.ID,
 		NomorInvoice:     inv2.NomorInvoice, // Phase 6C
 		DocumentStatus:   "belum",
@@ -121,7 +121,7 @@ func Seed() {
 
 	pend3 := models.Pendaftaran{
 		NomorPendaftaran: "UMR-SEED-0003",
-		CustomerNIK:      cust3.NIK,         // FK ke customer.nik
+		CustomerNIK:      cust3.NIK, // FK ke customer.nik
 		PaketID:          paket.ID,
 		NomorInvoice:     inv2.NomorInvoice, // Phase 6C
 		DocumentStatus:   "belum",

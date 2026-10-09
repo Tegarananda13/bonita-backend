@@ -35,9 +35,9 @@ func GetDashboard(c *gin.Context) {
 		Count(&pendingDokumen)
 
 	c.JSON(http.StatusOK, gin.H{
-		"total_paket":               totalPaket,
-		"total_pendaftaran":         totalPendaftaran,
-		"total_pembayaran_pending":  pendingPembayaran,
-		"total_dokumen_pending":     pendingDokumen,
+		"total_paket":              totalPaket,
+		"total_pendaftaran":        totalPendaftaran,
+		"total_pembayaran_pending": pendingPembayaran,
+		"total_dokumen_pending":    pendingDokumen,
 	})
 }

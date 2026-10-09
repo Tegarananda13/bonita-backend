@@ -40,7 +40,6 @@ func CreatePembayaran(c *gin.Context) {
 		return
 	}
 
-
 	// Pastikan Invoice ada (seharusnya selalu ada karena dibuat saat pendaftaran)
 	if pendaftaran.NomorInvoice == "" {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invoice untuk pendaftaran ini belum tersedia"})
@@ -95,8 +94,12 @@ func CreatePembayaran(c *gin.Context) {
 func GetCustomerDashboard(c *gin.Context) {
 	nomor := c.MustGet("pendaftaran_id").(string)
 
-	// Pastikan status sinkron sebelum mengembalikan data dashboard
-	helpers.SyncPendaftaranStatusByNomor(nomor)
+	var check models.Pendaftaran
+	config.DB.Select("status").Where("nomor_pendaftaran = ?", nomor).First(&check)
+	if check.Status != helpers.StatusPerluPerbaikan {
+		// Pastikan status sinkron sebelum mengembalikan data dashboard
+		helpers.SyncPendaftaranStatusByNomor(nomor)
+	}
 
 	var pendaftaran models.Pendaftaran
 	if err := config.DB.
@@ -202,28 +205,30 @@ func GetCustomerDashboard(c *gin.Context) {
 			"deskripsi":         pendaftaran.Paket.Deskripsi,
 		},
 		"pendaftaran": gin.H{
-			"nomor_pendaftaran": pendaftaran.NomorPendaftaran,
-			"tanggal_daftar":    pendaftaran.TanggalDaftar,
-			"status":            pendaftaran.Status,
-			"payment_status":    paymentStatus,
-			"document_status":   pendaftaran.DocumentStatus,
-			"batas_waktu_dp":    pendaftaran.BatasWaktuDP,
-			"total_orang":       totalOrangDash,
+			"nomor_pendaftaran":          pendaftaran.NomorPendaftaran,
+			"tanggal_daftar":             pendaftaran.TanggalDaftar,
+			"status":                     pendaftaran.Status,
+			"payment_status":             paymentStatus,
+			"document_status":            pendaftaran.DocumentStatus,
+			"batas_waktu_dp":             pendaftaran.BatasWaktuDP,
+			"total_orang":                totalOrangDash,
+			"catatan_verifikasi_manager": pendaftaran.CatatanVerifikasiManager,
+			"approved_at":                pendaftaran.ApprovedAt,
 		},
 		"invoice": gin.H{
-			"nomor_invoice":       nomorInvoiceDash,
-			"tanggal_invoice":     tanggalInvoiceDash,
-			"status_pembayaran":   paymentStatus,
-			"total_orang":         totalOrangDash,
-			"total_tagihan":       totalTagihanDash,
-			"total_pembayaran":    totalPembayaranDash,
-			"sisa_tagihan":        sisaTagihanDash,
-			"total_perlengkapan":  totalPerlengkapanDash,
+			"nomor_invoice":      nomorInvoiceDash,
+			"tanggal_invoice":    tanggalInvoiceDash,
+			"status_pembayaran":  paymentStatus,
+			"total_orang":        totalOrangDash,
+			"total_tagihan":      totalTagihanDash,
+			"total_pembayaran":   totalPembayaranDash,
+			"sisa_tagihan":       sisaTagihanDash,
+			"total_perlengkapan": totalPerlengkapanDash,
 		},
 		"perlengkapan": gin.H{
-			"ambil":  pendaftaran.AmbilPerlengkapan,
-			"harga":  pendaftaran.HargaPerlengkapan,
-			"total":  totalPerlengkapanDash,
+			"ambil": pendaftaran.AmbilPerlengkapan,
+			"harga": pendaftaran.HargaPerlengkapan,
+			"total": totalPerlengkapanDash,
 		},
 	})
 }
@@ -284,13 +289,13 @@ func GetPembayaran(c *gin.Context) {
 	invoice := pendaftaran.Invoice
 
 	c.JSON(http.StatusOK, gin.H{
-		"total_dibayar":    totalDibayar,
-		"harga_paket":      pendaftaran.Paket.Harga,
-		"total_tagihan":    invoice.TotalTagihan,
-		"total_orang":      invoice.TotalOrang,
-		"payment_status":   invoice.StatusPembayaran,
-		"nomor_invoice":    invoice.NomorInvoice,
-		"riwayat":          result,
+		"total_dibayar":  totalDibayar,
+		"harga_paket":    pendaftaran.Paket.Harga,
+		"total_tagihan":  invoice.TotalTagihan,
+		"total_orang":    invoice.TotalOrang,
+		"payment_status": invoice.StatusPembayaran,
+		"nomor_invoice":  invoice.NomorInvoice,
+		"riwayat":        result,
 	})
 }
 
@@ -374,7 +379,12 @@ func UploadBuktiPembayaran(c *gin.Context) {
 // GetCustomerPendaftaranStatus mengembalikan status terkini pendaftaran untuk customer portal
 func GetCustomerPendaftaranStatus(c *gin.Context) {
 	nomor := c.MustGet("pendaftaran_id").(string)
-	helpers.SyncPendaftaranStatusByNomor(nomor)
+
+	var check models.Pendaftaran
+	config.DB.Select("status").Where("nomor_pendaftaran = ?", nomor).First(&check)
+	if check.Status != helpers.StatusPerluPerbaikan {
+		helpers.SyncPendaftaranStatusByNomor(nomor)
+	}
 
 	var p models.Pendaftaran
 	if err := config.DB.
@@ -391,10 +401,12 @@ func GetCustomerPendaftaranStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"nomor_pendaftaran": p.NomorPendaftaran,
-		"nomor_invoice":     p.NomorInvoice,
-		"status":            p.Status,
-		"document_status":   p.DocumentStatus,
-		"payment_status":    paymentStatus,
+		"nomor_pendaftaran":          p.NomorPendaftaran,
+		"nomor_invoice":              p.NomorInvoice,
+		"status":                     p.Status,
+		"document_status":            p.DocumentStatus,
+		"payment_status":             paymentStatus,
+		"catatan_verifikasi_manager": p.CatatanVerifikasiManager,
+		"approved_at":                p.ApprovedAt,
 	})
 }

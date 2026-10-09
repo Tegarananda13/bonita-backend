@@ -49,10 +49,10 @@ func CreateFasilitas(c *gin.Context) {
 	}
 
 	fasilitas := models.DetailFasilitas{
-		PaketID: paketID,
+		PaketID:       paketID,
 		NamaFasilitas: req.NamaFasilitas,
-		Deskripsi: req.Deskripsi,
-		CreatedAt: time.Now(),
+		Deskripsi:     req.Deskripsi,
+		CreatedAt:     time.Now(),
 	}
 
 	if err := config.DB.
@@ -66,7 +66,7 @@ func CreateFasilitas(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Fasilitas berhasil ditambahkan",
-		"data": fasilitas,
+		"data":    fasilitas,
 	})
 }
 
@@ -141,7 +141,7 @@ func UpdateFasilitas(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Fasilitas berhasil diupdate",
-		"data": fasilitas,
+		"data":    fasilitas,
 	})
 }
 

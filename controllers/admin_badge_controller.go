@@ -15,6 +15,8 @@ func GetAdminBadges(c *gin.Context) {
 	var countDokumen int64
 	var countPembayaran int64
 	var countPengaduan int64
+	var countVerifikasiManager int64
+	var countPerluPerbaikan int64
 
 	config.DB.Model(&models.Dokumen{}).
 		Where("status_validasi = ?", helpers.PaymentVerificationPending).
@@ -28,10 +30,22 @@ func GetAdminBadges(c *gin.Context) {
 		Where("status = ?", helpers.PengaduanMenunggu).
 		Count(&countPengaduan)
 
+	config.DB.Model(&models.Pendaftaran{}).
+		Where("status = ?", helpers.StatusMenungguVerifikasiManager).
+		Select("COUNT(DISTINCT CASE WHEN nomor_invoice IS NOT NULL AND nomor_invoice <> '' THEN nomor_invoice ELSE nomor_pendaftaran END)").
+		Scan(&countVerifikasiManager)
+
+	config.DB.Model(&models.Pendaftaran{}).
+		Where("status = ?", helpers.StatusPerluPerbaikan).
+		Select("COUNT(DISTINCT CASE WHEN nomor_invoice IS NOT NULL AND nomor_invoice <> '' THEN nomor_invoice ELSE nomor_pendaftaran END)").
+		Scan(&countPerluPerbaikan)
+
 	c.JSON(http.StatusOK, gin.H{
-		"dokumen":    countDokumen,
-		"pembayaran": countPembayaran,
-		"pengaduan":  countPengaduan,
+		"dokumen":            countDokumen,
+		"pembayaran":         countPembayaran,
+		"pengaduan":          countPengaduan,
+		"verifikasi_manager": countVerifikasiManager,
+		"perlu_perbaikan":    countPerluPerbaikan,
 	})
 }
 

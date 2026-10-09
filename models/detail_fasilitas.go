@@ -8,11 +8,11 @@ import (
 )
 
 type DetailFasilitas struct {
-	ID             uuid.UUID `gorm:"type:uuid;primaryKey"`
-	PaketID        uuid.UUID `gorm:"type:uuid;not null"`
-	NamaFasilitas  string
-	Deskripsi      string
-	CreatedAt      time.Time
+	ID            uuid.UUID `gorm:"type:uuid;primaryKey"`
+	PaketID       uuid.UUID `gorm:"type:uuid;not null"`
+	NamaFasilitas string
+	Deskripsi     string
+	CreatedAt     time.Time
 
 	// relasi
 	Paket         PaketUmroh      `json:"-"`

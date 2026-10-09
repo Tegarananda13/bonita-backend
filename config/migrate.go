@@ -106,6 +106,10 @@ func Migrate() {
 	DB.Exec(`ALTER TABLE chatbot_log DROP CONSTRAINT IF EXISTS fk_chatbot_log_customer_nik`)
 	DB.Exec(`ALTER TABLE chatbot_log ADD CONSTRAINT fk_chatbot_log_customer_nik FOREIGN KEY (customer_nik) REFERENCES customer(nik) ON UPDATE CASCADE ON DELETE RESTRICT`)
 
+	// Step 1f: Restore FK approved_by ke "user"(id) (idempoten)
+	DB.Exec(`ALTER TABLE pendaftaran DROP CONSTRAINT IF EXISTS fk_pendaftaran_approved_by`)
+	DB.Exec(`ALTER TABLE pendaftaran ADD CONSTRAINT fk_pendaftaran_approved_by FOREIGN KEY (approved_by) REFERENCES "user"(id) ON UPDATE CASCADE ON DELETE SET NULL`)
+
 	// Step 2: Isi kolom NIK yang kosong dengan nilai placeholder unik
 	DB.Exec(`
 		UPDATE customer

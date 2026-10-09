@@ -76,10 +76,10 @@ func VerifikasiPembayaran(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Status pembayaran berhasil diupdate",
 		"data": gin.H{
-			"id":            pembayaran.ID,
-			"status":        pembayaran.Status,
+			"id":               pembayaran.ID,
+			"status":           pembayaran.Status,
 			"alasan_penolakan": pembayaran.AlasanPenolakan,
-			"pending_count": countMenunggu,
+			"pending_count":    countMenunggu,
 		},
 	})
 }

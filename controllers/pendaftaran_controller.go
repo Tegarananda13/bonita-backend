@@ -52,20 +52,20 @@ func resolveRegistrationSource(c *gin.Context, source string) (string, string) {
 
 // JamaahRequest adalah data satu jamaah dalam request pendaftaran.
 type JamaahRequest struct {
-	NIK                string `json:"nik"                 binding:"required"`
-	Nama               string `json:"nama"                binding:"required"`
-	TempatLahir        string `json:"tempat_lahir"        binding:"required"`
-	TanggalLahir       string `json:"tanggal_lahir"       binding:"required"` // YYYY-MM-DD
-	JenisKelamin       string `json:"jenis_kelamin"       binding:"required"`
-	NoHP               string `json:"no_hp"               binding:"required"`
-	Email              string `json:"email"               binding:"required"`
-	AlamatLengkap      string `json:"alamat_lengkap"      binding:"required"`
-	Provinsi           string `json:"provinsi"            binding:"required"`
-	KabupatenKota      string `json:"kabupaten_kota"      binding:"required"`
-	Kecamatan          string `json:"kecamatan"           binding:"required"`
-	KelurahanDesa      string `json:"kelurahan_desa"      binding:"required"`
-	KodePos            string `json:"kode_pos"            binding:"required"`
-	AmbilPerlengkapan  bool   `json:"ambil_perlengkapan"`
+	NIK               string `json:"nik"                 binding:"required"`
+	Nama              string `json:"nama"                binding:"required"`
+	TempatLahir       string `json:"tempat_lahir"        binding:"required"`
+	TanggalLahir      string `json:"tanggal_lahir"       binding:"required"` // YYYY-MM-DD
+	JenisKelamin      string `json:"jenis_kelamin"       binding:"required"`
+	NoHP              string `json:"no_hp"               binding:"required"`
+	Email             string `json:"email"               binding:"required"`
+	AlamatLengkap     string `json:"alamat_lengkap"      binding:"required"`
+	Provinsi          string `json:"provinsi"            binding:"required"`
+	KabupatenKota     string `json:"kabupaten_kota"      binding:"required"`
+	Kecamatan         string `json:"kecamatan"           binding:"required"`
+	KelurahanDesa     string `json:"kelurahan_desa"      binding:"required"`
+	KodePos           string `json:"kode_pos"            binding:"required"`
+	AmbilPerlengkapan bool   `json:"ambil_perlengkapan"`
 }
 
 // CreatePendaftaranRequest mendukung satu maupun banyak jamaah.
@@ -91,18 +91,18 @@ func CreatePendaftaran(c *gin.Context) {
 	// ── Validasi & trim setiap jamaah ────────────────────────────────────────
 	for i := range req.Jamaah {
 		j := &req.Jamaah[i]
-		j.NIK           = strings.TrimSpace(j.NIK)
-		j.Nama          = strings.TrimSpace(j.Nama)
-		j.TempatLahir   = strings.TrimSpace(j.TempatLahir)
-		j.JenisKelamin  = strings.TrimSpace(j.JenisKelamin)
-		j.NoHP          = strings.TrimSpace(j.NoHP)
-		j.Email         = strings.TrimSpace(j.Email)
+		j.NIK = strings.TrimSpace(j.NIK)
+		j.Nama = strings.TrimSpace(j.Nama)
+		j.TempatLahir = strings.TrimSpace(j.TempatLahir)
+		j.JenisKelamin = strings.TrimSpace(j.JenisKelamin)
+		j.NoHP = strings.TrimSpace(j.NoHP)
+		j.Email = strings.TrimSpace(j.Email)
 		j.AlamatLengkap = strings.TrimSpace(j.AlamatLengkap)
-		j.Provinsi      = strings.TrimSpace(j.Provinsi)
+		j.Provinsi = strings.TrimSpace(j.Provinsi)
 		j.KabupatenKota = strings.TrimSpace(j.KabupatenKota)
-		j.Kecamatan     = strings.TrimSpace(j.Kecamatan)
+		j.Kecamatan = strings.TrimSpace(j.Kecamatan)
 		j.KelurahanDesa = strings.TrimSpace(j.KelurahanDesa)
-		j.KodePos       = strings.TrimSpace(j.KodePos)
+		j.KodePos = strings.TrimSpace(j.KodePos)
 
 		// validasi NIK 16 digit angka
 		if len(j.NIK) != 16 {
@@ -281,15 +281,15 @@ func CreatePendaftaran(c *gin.Context) {
 	// ── Response ─────────────────────────────────────────────────────────────
 	batasDP := time.Now().Add(24 * time.Hour)
 	c.JSON(http.StatusCreated, gin.H{
-		"message":              "Pendaftaran berhasil",
-		"nomor_invoice":        nomorInvoice,
-		"jumlah_jamaah":        jumlahJamaah,
-		"total_tagihan":        invoice.TotalTagihan,
-		"total_perlengkapan":   totalPerlengkapan,
-		"jumlah_perlengkapan":  jumlahAmbilPerlengkapan,
-		"paket":                paket.NamaPaket,
-		"pendaftaran":          results,
-		"batas_waktu_dp":       batasDP,
+		"message":             "Pendaftaran berhasil",
+		"nomor_invoice":       nomorInvoice,
+		"jumlah_jamaah":       jumlahJamaah,
+		"total_tagihan":       invoice.TotalTagihan,
+		"total_perlengkapan":  totalPerlengkapan,
+		"jumlah_perlengkapan": jumlahAmbilPerlengkapan,
+		"paket":               paket.NamaPaket,
+		"pendaftaran":         results,
+		"batas_waktu_dp":      batasDP,
 		// backward-compat: field lama tetap ada (diambil dari jamaah pertama)
 		"data": gin.H{
 			"nomor_pendaftaran": results[0].NomorPendaftaran,

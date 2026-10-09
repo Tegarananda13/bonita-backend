@@ -89,11 +89,11 @@ func GetDetailPengaduan(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":     pengaduan.ID,
-		"judul":  pengaduan.Judul,
-		"isi":    pengaduan.IsiPengaduan,
-		"kategori": pengaduan.Kategori,
-		"status": pengaduan.Status,
+		"id":         pengaduan.ID,
+		"judul":      pengaduan.Judul,
+		"isi":        pengaduan.IsiPengaduan,
+		"kategori":   pengaduan.Kategori,
+		"status":     pengaduan.Status,
 		"created_at": pengaduan.CreatedAt,
 		"updated_at": pengaduan.UpdatedAt,
 		"customer": gin.H{

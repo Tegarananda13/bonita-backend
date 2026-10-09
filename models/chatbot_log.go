@@ -8,9 +8,9 @@ import (
 )
 
 type ChatbotLog struct {
-	ID          uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	ID uuid.UUID `gorm:"type:uuid;primaryKey"`
 	// Phase 8A: CustomerID sudah dihapus dari DB.
-	CustomerNIK *string    `gorm:"column:customer_nik"` // FK ke customer.nik (nullable)
+	CustomerNIK *string `gorm:"column:customer_nik"` // FK ke customer.nik (nullable)
 	Pertanyaan  string
 	Jawaban     string
 	CreatedAt   time.Time

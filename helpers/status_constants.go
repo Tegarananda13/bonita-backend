@@ -2,7 +2,7 @@ package helpers
 
 const (
 	PaymentBelum = "belum"
-	PaymentDP = "dp"
+	PaymentDP    = "dp"
 	PaymentLunas = "lunas"
 
 	PaymentVerificationPending  = "pending"
@@ -15,17 +15,19 @@ const (
 	DocumentRevisi       = "revisi"
 	DocumentLengkap      = "lengkap"
 
-	StatusProses             = "proses"
-	StatusMenungguDokumen    = "menunggu_dokumen"
-	StatusMenungguPembayaran = "menunggu_pembayaran"
-	StatusSiapBerangkat      = "siap_berangkat"
-	StatusSelesai            = "selesai"
-	StatusKadaluarsa         = "kadaluarsa"
+	StatusProses                    = "proses"
+	StatusMenungguDokumen           = "menunggu_dokumen"
+	StatusMenungguPembayaran        = "menunggu_pembayaran"
+	StatusMenungguVerifikasiManager = "menunggu_verifikasi_manager"
+	StatusPerluPerbaikan            = "perlu_perbaikan"
+	StatusSiapBerangkat             = "siap_berangkat"
+	StatusSelesai                   = "selesai"
+	StatusKadaluarsa                = "kadaluarsa"
 
 	// Pengaduan
-	PengaduanMenunggu  = "menunggu"
-	PengaduanDiproses  = "diproses"
-	PengaduanSelesai   = "selesai"
+	PengaduanMenunggu = "menunggu"
+	PengaduanDiproses = "diproses"
+	PengaduanSelesai  = "selesai"
 
 	// Perlengkapan tambahan jamaah — harga default per jamaah
 	DefaultHargaPerlengkapan = 1_450_000

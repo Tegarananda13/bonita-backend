@@ -225,6 +225,6 @@ func VerifyOTP(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "OTP valid",
-		"token": token,
+		"token":   token,
 	})
 }

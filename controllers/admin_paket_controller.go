@@ -88,7 +88,6 @@ func CreatePaket(c *gin.Context) {
 		return
 	}
 
-
 	// =========================
 	// Validasi kuota
 	// =========================
@@ -99,7 +98,6 @@ func CreatePaket(c *gin.Context) {
 		})
 		return
 	}
-
 
 	// =========================
 	// Ambil foto paket (opsional — bisa diupload terpisah)
@@ -132,7 +130,6 @@ func CreatePaket(c *gin.Context) {
 		}
 	}
 
-
 	// =========================
 	// Simpan paket ke database
 	// =========================
@@ -150,7 +147,6 @@ func CreatePaket(c *gin.Context) {
 		BatasPendaftaran: batasPendaftaran,
 		CreatedAt:        time.Now(),
 	}
-
 
 	if err := config.DB.
 		Create(&paket).Error; err != nil {
@@ -176,28 +172,27 @@ func CreatePaket(c *gin.Context) {
 	// Paket yang tanggal selesainya sudah lewat langsung dianggap selesai & nonaktif
 	_ = helpers.SyncFinishedPaket()
 
-
 	// =========================
 	// Response
 	// =========================
 
 	c.JSON(http.StatusOK, gin.H{
-    "message": "Paket berhasil dibuat",
-    "data": gin.H{
-        "id": paket.ID,
-        "nama_paket": paket.NamaPaket,
-        "jenis_paket": paket.JenisPaket,
-        "foto_paket": paket.FotoPaket,
-        "harga": paket.Harga,
-        "tanggal_berangkat": paket.TanggalBerangkat,
-        "durasi": paket.Durasi,
-        "deskripsi": paket.Deskripsi,
-        "kuota_max": paket.KuotaMax,
-        "kuota_terpakai": paket.KuotaTerpakai,
-        "batas_pendaftaran": paket.BatasPendaftaran,
-        "created_at": paket.CreatedAt,
-    },
-})
+		"message": "Paket berhasil dibuat",
+		"data": gin.H{
+			"id":                paket.ID,
+			"nama_paket":        paket.NamaPaket,
+			"jenis_paket":       paket.JenisPaket,
+			"foto_paket":        paket.FotoPaket,
+			"harga":             paket.Harga,
+			"tanggal_berangkat": paket.TanggalBerangkat,
+			"durasi":            paket.Durasi,
+			"deskripsi":         paket.Deskripsi,
+			"kuota_max":         paket.KuotaMax,
+			"kuota_terpakai":    paket.KuotaTerpakai,
+			"batas_pendaftaran": paket.BatasPendaftaran,
+			"created_at":        paket.CreatedAt,
+		},
+	})
 }
 
 func GetAllPaket(c *gin.Context) {
@@ -382,7 +377,7 @@ func GetPaketByID(c *gin.Context) {
 		"paket":             paket,
 		"status_perjalanan": helpers.PaketStatusPerjalanan(paket, time.Now()),
 		"gambar_paket":      gambarPaketResp,
-		"fasilitas":    fasilitasResp,
+		"fasilitas":         fasilitasResp,
 	})
 }
 
@@ -577,24 +572,23 @@ func UpdatePaket(c *gin.Context) {
 		return
 	}
 
-
 	c.JSON(http.StatusOK, gin.H{
-    "message": "Paket berhasil diupdate",
-    "data": gin.H{
-        "id": paket.ID,
-        "nama_paket": paket.NamaPaket,
-        "jenis_paket": paket.JenisPaket,
-        "foto_paket": paket.FotoPaket,
-        "harga": paket.Harga,
-        "tanggal_berangkat": paket.TanggalBerangkat,
-        "durasi": paket.Durasi,
-        "deskripsi": paket.Deskripsi,
-        "kuota_max": paket.KuotaMax,
-        "kuota_terpakai": paket.KuotaTerpakai,
-        "batas_pendaftaran": paket.BatasPendaftaran,
-        "created_at": paket.CreatedAt,
-    },
-})
+		"message": "Paket berhasil diupdate",
+		"data": gin.H{
+			"id":                paket.ID,
+			"nama_paket":        paket.NamaPaket,
+			"jenis_paket":       paket.JenisPaket,
+			"foto_paket":        paket.FotoPaket,
+			"harga":             paket.Harga,
+			"tanggal_berangkat": paket.TanggalBerangkat,
+			"durasi":            paket.Durasi,
+			"deskripsi":         paket.Deskripsi,
+			"kuota_max":         paket.KuotaMax,
+			"kuota_terpakai":    paket.KuotaTerpakai,
+			"batas_pendaftaran": paket.BatasPendaftaran,
+			"created_at":        paket.CreatedAt,
+		},
+	})
 }
 
 func DeletePaket(c *gin.Context) {

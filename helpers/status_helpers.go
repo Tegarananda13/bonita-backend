@@ -10,13 +10,13 @@ import (
 // DetermineGroupMainStatus menentukan status utama pendaftaran berdasarkan status lunas invoice
 // dan kelengkapan dokumen seluruh jamaah dalam grup (atau individu).
 // Aturan:
-// - Lunas + Seluruh Dokumen Lengkap -> siap_berangkat
+// - Lunas + Seluruh Dokumen Lengkap -> menunggu_verifikasi_manager
 // - Lunas + Dokumen Belum Lengkap -> menunggu_dokumen
 // - Belum Lunas + Seluruh Dokumen Lengkap -> menunggu_pembayaran
 // - Belum Lunas + Dokumen Belum Lengkap -> proses
 func DetermineGroupMainStatus(paymentLunas bool, allDocsLengkap bool) string {
 	if paymentLunas && allDocsLengkap {
-		return StatusSiapBerangkat
+		return StatusMenungguVerifikasiManager
 	} else if paymentLunas {
 		return StatusMenungguDokumen
 	} else if allDocsLengkap {
@@ -102,8 +102,8 @@ func SyncPendaftaranStatus(nomorInvoice string) {
 		}
 	}
 
-	// 4. Tentukan status utama grup (siap_berangkat jika lunas + semua jamaah lengkap)
-	targetStatus := DetermineGroupMainStatus(paymentLunas, allDocsLengkap)
+	// 4. Tentukan status utama grup (menunggu_verifikasi_manager jika lunas + semua jamaah lengkap)
+	defaultTargetStatus := DetermineGroupMainStatus(paymentLunas, allDocsLengkap)
 
 	// 5. Update seluruh pendaftaran dalam invoice yang tidak berstatus terminal
 	statusUpdated := false
@@ -111,6 +111,21 @@ func SyncPendaftaranStatus(nomorInvoice string) {
 		// Pertahankan status terminal (selesai, kadaluarsa, batal)
 		if p.Status == StatusSelesai || p.Status == StatusKadaluarsa || p.Status == "batal" {
 			continue
+		}
+
+		targetStatus := defaultTargetStatus
+
+		// Aturan 1: Hormati approval Manager.
+		// Jika sudah disetujui Manager (ApprovedAt != nil) dan status saat ini siap_berangkat,
+		// serta masih lunas + dokumen seluruhnya lengkap, pertahankan siap_berangkat.
+		if p.ApprovedAt != nil && p.Status == StatusSiapBerangkat && paymentLunas && allDocsLengkap {
+			targetStatus = StatusSiapBerangkat
+		}
+
+		// Aturan 2: Jika status saat ini perlu_perbaikan dan perbaikan belum selesai (belum lunas atau belum lengkap),
+		// pertahankan status perlu_perbaikan agar tetap di antrean perbaikan Admin.
+		if p.Status == StatusPerluPerbaikan && !(paymentLunas && allDocsLengkap) {
+			targetStatus = StatusPerluPerbaikan
 		}
 
 		if p.Status != targetStatus {
@@ -127,7 +142,7 @@ func SyncPendaftaranStatus(nomorInvoice string) {
 
 	if statusUpdated {
 		log.Printf("[SYNC PENDAFTARAN] Selesai sinkronisasi grup %s (Jumlah Jamaah: %d, Lunas: %t, AllDocsLengkap: %t, Target: %s)",
-			nomorInvoice, len(pendaftaranList), paymentLunas, allDocsLengkap, targetStatus)
+			nomorInvoice, len(pendaftaranList), paymentLunas, allDocsLengkap, defaultTargetStatus)
 	}
 }
 
@@ -164,6 +179,13 @@ func SyncPendaftaranStatusByNomor(nomorPendaftaran string) {
 	}
 
 	targetStatus := DetermineGroupMainStatus(false, p.DocumentStatus == DocumentLengkap)
+	if p.ApprovedAt != nil && p.Status == StatusSiapBerangkat && p.DocumentStatus == DocumentLengkap {
+		targetStatus = StatusSiapBerangkat
+	}
+	if p.Status == StatusPerluPerbaikan && p.DocumentStatus != DocumentLengkap {
+		targetStatus = StatusPerluPerbaikan
+	}
+
 	if p.Status != targetStatus {
 		config.DB.Model(&models.Pendaftaran{}).
 			Where("nomor_pendaftaran = ?", p.NomorPendaftaran).
@@ -180,7 +202,7 @@ func UpdateStatusPendaftaran(nomorPendaftaran string) {
 func SyncActivePendaftaran() {
 	var activeInvoices []string
 	config.DB.Model(&models.Pendaftaran{}).
-		Where("status NOT IN (?, ?) AND nomor_invoice != ''", StatusSelesai, StatusKadaluarsa).
+		Where("status NOT IN (?, ?, ?) AND nomor_invoice != ''", StatusSelesai, StatusKadaluarsa, StatusPerluPerbaikan).
 		Distinct("nomor_invoice").
 		Pluck("nomor_invoice", &activeInvoices)
 
@@ -189,11 +211,10 @@ func SyncActivePendaftaran() {
 	}
 
 	var noInvoiceList []models.Pendaftaran
-	config.DB.Where("status NOT IN (?, ?) AND (nomor_invoice IS NULL OR nomor_invoice = '')", StatusSelesai, StatusKadaluarsa).
+	config.DB.Where("status NOT IN (?, ?, ?) AND (nomor_invoice IS NULL OR nomor_invoice = '')", StatusSelesai, StatusKadaluarsa, StatusPerluPerbaikan).
 		Find(&noInvoiceList)
 
 	for _, p := range noInvoiceList {
 		SyncPendaftaranStatusByNomor(p.NomorPendaftaran)
 	}
 }
-

@@ -1,33 +1,33 @@
-	package models
+package models
 
-	import (
-		"time"
+import (
+	"time"
 
-		"github.com/google/uuid"
-		"gorm.io/gorm"
-	)
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
 
-	type PaketUmroh struct {
-		ID                uuid.UUID `gorm:"type:uuid;primaryKey"`
-		NamaPaket         string
-		JenisPaket        string
-		FotoPaket		  string
-		Harga             float64
-		TanggalBerangkat  time.Time
-		Durasi            int
-		Deskripsi         string
-		KuotaMax          int
-		KuotaTerpakai     int
-		BatasPendaftaran  int
-		IsActive          bool      `gorm:"default:true"`
-		IsFinished        bool      `gorm:"default:false"`
-		CreatedAt         time.Time
+type PaketUmroh struct {
+	ID               uuid.UUID `gorm:"type:uuid;primaryKey"`
+	NamaPaket        string
+	JenisPaket       string
+	FotoPaket        string
+	Harga            float64
+	TanggalBerangkat time.Time
+	Durasi           int
+	Deskripsi        string
+	KuotaMax         int
+	KuotaTerpakai    int
+	BatasPendaftaran int
+	IsActive         bool `gorm:"default:true"`
+	IsFinished       bool `gorm:"default:false"`
+	CreatedAt        time.Time
 
-		Fasilitas   []DetailFasilitas `gorm:"foreignKey:PaketID"`
-		GambarPaket []FotoPaket       `gorm:"foreignKey:PaketID;references:ID"  json:"gambar_paket,omitempty"`
-	}
+	Fasilitas   []DetailFasilitas `gorm:"foreignKey:PaketID"`
+	GambarPaket []FotoPaket       `gorm:"foreignKey:PaketID;references:ID"  json:"gambar_paket,omitempty"`
+}
 
-	func (p *PaketUmroh) BeforeCreate(tx *gorm.DB) (err error) {
-		p.ID = uuid.New()
-		return
-	}
+func (p *PaketUmroh) BeforeCreate(tx *gorm.DB) (err error) {
+	p.ID = uuid.New()
+	return
+}

@@ -49,18 +49,18 @@ func AdminCreateCustomer(c *gin.Context) {
 	}
 
 	// Trim whitespace
-	req.NIK           = strings.TrimSpace(req.NIK)
-	req.Nama          = strings.TrimSpace(req.Nama)
-	req.TempatLahir   = strings.TrimSpace(req.TempatLahir)
-	req.JenisKelamin  = strings.TrimSpace(req.JenisKelamin)
-	req.NoHP          = strings.TrimSpace(req.NoHP)
-	req.Email         = strings.TrimSpace(req.Email)
+	req.NIK = strings.TrimSpace(req.NIK)
+	req.Nama = strings.TrimSpace(req.Nama)
+	req.TempatLahir = strings.TrimSpace(req.TempatLahir)
+	req.JenisKelamin = strings.TrimSpace(req.JenisKelamin)
+	req.NoHP = strings.TrimSpace(req.NoHP)
+	req.Email = strings.TrimSpace(req.Email)
 	req.AlamatLengkap = strings.TrimSpace(req.AlamatLengkap)
-	req.Provinsi      = strings.TrimSpace(req.Provinsi)
+	req.Provinsi = strings.TrimSpace(req.Provinsi)
 	req.KabupatenKota = strings.TrimSpace(req.KabupatenKota)
-	req.Kecamatan     = strings.TrimSpace(req.Kecamatan)
+	req.Kecamatan = strings.TrimSpace(req.Kecamatan)
 	req.KelurahanDesa = strings.TrimSpace(req.KelurahanDesa)
-	req.KodePos       = strings.TrimSpace(req.KodePos)
+	req.KodePos = strings.TrimSpace(req.KodePos)
 
 	if req.NIK == "" || req.Nama == "" || req.TempatLahir == "" ||
 		req.TanggalLahir == "" || req.JenisKelamin == "" ||
@@ -224,14 +224,14 @@ func AdminCreateCustomer(c *gin.Context) {
 		},
 		"pendaftaran": gin.H{
 			"nomor_pendaftaran": nomorPendaftaran,
-			"nomor_invoice":    nomorInvoice,
-			"paket":            paket.NamaPaket,
-			"harga":            paket.Harga,
-			"payment_status":   invoice.StatusPembayaran,
-			"document_status":  pendaftaran.DocumentStatus,
-			"status":           pendaftaran.Status,
-			"tanggal_daftar":   pendaftaran.TanggalDaftar,
-			"pic_id":           adminID,
+			"nomor_invoice":     nomorInvoice,
+			"paket":             paket.NamaPaket,
+			"harga":             paket.Harga,
+			"payment_status":    invoice.StatusPembayaran,
+			"document_status":   pendaftaran.DocumentStatus,
+			"status":            pendaftaran.Status,
+			"tanggal_daftar":    pendaftaran.TanggalDaftar,
+			"pic_id":            adminID,
 		},
 	})
 }
@@ -259,19 +259,19 @@ func AdminGetAllCustomer(c *gin.Context) {
 	for _, p := range pendaftarans {
 		result = append(result, gin.H{
 			"nomor_pendaftaran": p.NomorPendaftaran,
-			"nama_customer":    p.Customer.Nama,
-			"nik":              p.Customer.NIK,
-			"no_hp":            p.Customer.NoHP,
-			"email":            p.Customer.Email,
-			"tempat_lahir":     p.Customer.TempatLahir,
-			"tanggal_lahir":    p.Customer.TanggalLahir,
-			"jenis_kelamin":    p.Customer.JenisKelamin,
-			"paket":            p.Paket.NamaPaket,
-			"payment_status":   paymentStatusFromPendaftaran(p),
-			"document_status":  p.DocumentStatus,
-			"status":           p.Status,
-			"tanggal_daftar":   p.TanggalDaftar,
-			"pic":              p.User.Nama,
+			"nama_customer":     p.Customer.Nama,
+			"nik":               p.Customer.NIK,
+			"no_hp":             p.Customer.NoHP,
+			"email":             p.Customer.Email,
+			"tempat_lahir":      p.Customer.TempatLahir,
+			"tanggal_lahir":     p.Customer.TanggalLahir,
+			"jenis_kelamin":     p.Customer.JenisKelamin,
+			"paket":             p.Paket.NamaPaket,
+			"payment_status":    paymentStatusFromPendaftaran(p),
+			"document_status":   p.DocumentStatus,
+			"status":            p.Status,
+			"tanggal_daftar":    p.TanggalDaftar,
+			"pic":               p.User.Nama,
 		})
 	}
 

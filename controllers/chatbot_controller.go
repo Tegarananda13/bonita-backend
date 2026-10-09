@@ -103,7 +103,7 @@ type ChatbotRequest struct {
 	NomorUMR      string   `json:"nomor_umr"`
 	PendaftaranID string   `json:"pendaftaran_id"`
 	Kategori      string   `json:"kategori"`
-	RegData       *RegData `json:"reg_data"`        // state pendaftaran chatbot
+	RegData       *RegData `json:"reg_data"` // state pendaftaran chatbot
 }
 
 // ── Chatbot ────────────────────────────────────────────────────────────────────
@@ -793,11 +793,11 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 				"flow":              "",        // Chatbot kembali ke mode normal / percakapan umum
 				"step":              "selesai", // Pendaftaran saat ini selesai
 				"chat_session_id":   req.ChatSessionID,
-				"reg_session_id":    "",        // Registration session aktif selesai & dibersihkan
+				"reg_session_id":    "", // Registration session aktif selesai & dibersihkan
 				"pendaftaran_id":    pendaftaran.NomorPendaftaran,
 				"nomor_pendaftaran": nomor,
 				"batas_waktu_dp":    batasDP,
-				"reg_data":          nil,       // Formulir sementara dibersihkan
+				"reg_data":          nil, // Formulir sementara dibersihkan
 			},
 		})
 		return
@@ -840,6 +840,7 @@ func saveChatLog(pertanyaan, jawaban string) {
 	}
 	config.DB.Create(&log) //nolint
 }
+
 // formatTanggalIDSingkat — format "03 Des 2026" (WIB)
 func formatTanggalIDSingkat(t time.Time) string {
 	bulan := []string{"", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"}

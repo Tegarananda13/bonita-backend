@@ -90,11 +90,11 @@ func VerifikasiDokumen(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Status dokumen berhasil diupdate",
 		"data": gin.H{
-			"id":              dokumen.ID,
-			"status":          dokumen.StatusValidasi,
+			"id":               dokumen.ID,
+			"status":           dokumen.StatusValidasi,
 			"alasan_penolakan": dokumen.AlasanPenolakan,
-			"document_status": documentStatus,
-			"pending_count":   countMenunggu,
+			"document_status":  documentStatus,
+			"pending_count":    countMenunggu,
 		},
 	})
 }
@@ -119,12 +119,12 @@ func GetDetailDokumen(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"dokumen": gin.H{
-			"ID":             dokumen.ID,
-			"JenisDokumen":   dokumen.JenisDokumen,
-			"FilePath":       dokumen.FilePath,
-			"StatusValidasi": dokumen.StatusValidasi,
+			"ID":              dokumen.ID,
+			"JenisDokumen":    dokumen.JenisDokumen,
+			"FilePath":        dokumen.FilePath,
+			"StatusValidasi":  dokumen.StatusValidasi,
 			"AlasanPenolakan": dokumen.AlasanPenolakan,
-			"CreatedAt":      dokumen.CreatedAt,
+			"CreatedAt":       dokumen.CreatedAt,
 			"Pendaftaran": gin.H{
 				"NomorPendaftaran": dokumen.Pendaftaran.NomorPendaftaran,
 				"Customer": gin.H{

@@ -252,4 +252,3 @@ func GetDokumen(c *gin.Context) {
 		"document_status":     pendaftaran.DocumentStatus,
 	})
 }
-

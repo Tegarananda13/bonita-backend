@@ -9,15 +9,15 @@ import (
 )
 
 type User struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
-	Nama      string
-	Username  string    `gorm:"uniqueIndex"`
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	Nama      string    `json:"nama"`
+	Username  string    `gorm:"uniqueIndex" json:"username"`
 	Password  string    `json:"-"`
-	Role      string
-	NoHP      string
-	Email     string
-	IsActive  bool      `gorm:"default:true"`
-	CreatedAt time.Time
+	Role      string    `json:"role"`
+	NoHP      string    `json:"no_hp"`
+	Email     string    `json:"email"`
+	IsActive  bool      `gorm:"default:true" json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (u *User) BeforeCreate(tx *gorm.DB) (err error) {

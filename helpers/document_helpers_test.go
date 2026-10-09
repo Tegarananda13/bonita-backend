@@ -309,7 +309,7 @@ func TestDocumentCompleteness_AliasesAndVariations(t *testing.T) {
 		docs := []models.Dokumen{
 			makeDoc("paspor", helpers.PaymentVerificationDiterima, now),
 			makeDoc("ktp", helpers.PaymentVerificationDiterima, now),
-			makeDoc("kk", helpers.PaymentVerificationDiterima, now),              // alias KK
+			makeDoc("kk", helpers.PaymentVerificationDiterima, now),             // alias KK
 			makeDoc("akte_kelahiran", helpers.PaymentVerificationDiterima, now), // alias Akte Kelahiran
 			makeDoc("vaksin", helpers.PaymentVerificationDiterima, now),
 			makeDoc("pas_foto", helpers.PaymentVerificationDiterima, now), // pas_foto
