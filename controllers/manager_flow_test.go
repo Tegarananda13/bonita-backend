@@ -673,3 +673,260 @@ func TestGroupRegistration_ManagerVerification(t *testing.T) {
 		t.Errorf("Expected ApprovedBy to be set for all group members")
 	}
 }
+
+func TestAssignPendaftaran_RolePermissions(t *testing.T) {
+	router, cleanup := setupTestApp(t)
+	defer cleanup()
+
+	admin1 := createTestUser("admin", "Admin Satu")
+	admin2 := createTestUser("admin", "Admin Dua")
+	manager := createTestUser("manager", "Administration Manager")
+
+	admin1Token := makeJWT(admin1.ID.String(), admin1.Role, admin1.Nama)
+	admin2Token := makeJWT(admin2.ID.String(), admin2.Role, admin2.Nama)
+	managerToken := makeJWT(manager.ID.String(), manager.Role, manager.Nama)
+
+	cust := createTestCustomer("9999000011112222", "Jamaah Assign Test")
+	paket := createTestPaket()
+
+	invNo := "INV-ASSIGN-" + uuid.New().String()[:8]
+	inv := models.Invoice{
+		NomorInvoice:     invNo,
+		TotalOrang:       1,
+		TotalTagihan:     25000000,
+		TotalPembayaran:  0,
+		StatusPembayaran: models.InvoiceStatusBelumBayar,
+		CreatedAt:        time.Now(),
+	}
+	config.DB.Create(&inv)
+
+	nomor := "UMR-ASSIGN-" + uuid.New().String()[:8]
+	pd := models.Pendaftaran{
+		NomorPendaftaran: nomor,
+		CustomerNIK:      cust.NIK,
+		PaketID:          paket.ID,
+		NomorInvoice:     invNo,
+		DocumentStatus:   helpers.DocumentBelum,
+		Status:           helpers.StatusProses,
+		TanggalDaftar:    time.Now(),
+		UserID:           nil,
+	}
+	config.DB.Create(&pd)
+
+	defer func() {
+		config.DB.Where("nomor_pendaftaran = ?", nomor).Delete(&models.Pendaftaran{})
+		config.DB.Where("nomor_invoice = ?", invNo).Delete(&models.Invoice{})
+		config.DB.Where("nik = ?", cust.NIK).Delete(&models.Customer{})
+		config.DB.Where("id = ?", paket.ID).Delete(&models.PaketUmroh{})
+		config.DB.Where("id IN ?", []uuid.UUID{admin1.ID, admin2.ID, manager.ID}).Delete(&models.User{})
+	}()
+
+	// Step 1: Admin1 mencoba assign ke admin2 lewat JSON body -> Harus 403 Forbidden
+	reqBody, _ := json.Marshal(map[string]string{"admin_id": admin2.ID.String()})
+	w1 := httptest.NewRecorder()
+	r1, _ := http.NewRequest("PUT", "/admin/pendaftaran/"+nomor+"/assign", bytes.NewBuffer(reqBody))
+	r1.Header.Set("Authorization", "Bearer "+admin1Token)
+	r1.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w1, r1)
+
+	if w1.Code != http.StatusForbidden {
+		t.Errorf("Expected 403 when Admin tries to assign other admin, got %d: %s", w1.Code, w1.Body.String())
+	}
+
+	// Step 2: Admin1 mengambil pendaftaran (Jadikan Saya PIC) -> Harus 200 OK
+	w2 := httptest.NewRecorder()
+	r2, _ := http.NewRequest("PUT", "/admin/pendaftaran/"+nomor+"/assign", nil)
+	r2.Header.Set("Authorization", "Bearer "+admin1Token)
+	router.ServeHTTP(w2, r2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("Expected 200 on Admin Jadikan Saya PIC, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	var p models.Pendaftaran
+	config.DB.Where("nomor_pendaftaran = ?", nomor).First(&p)
+	if p.UserID == nil || *p.UserID != admin1.ID {
+		t.Fatalf("Expected UserID to be admin1, got %v", p.UserID)
+	}
+
+	// Step 3: Admin2 mencoba mengambil pendaftaran yang sudah punya PIC -> Harus 400 Bad Request
+	w3 := httptest.NewRecorder()
+	r3, _ := http.NewRequest("PUT", "/admin/pendaftaran/"+nomor+"/assign", nil)
+	r3.Header.Set("Authorization", "Bearer "+admin2Token)
+	router.ServeHTTP(w3, r3)
+
+	if w3.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 when another admin tries to claim already assigned pendaftaran, got %d: %s", w3.Code, w3.Body.String())
+	}
+
+	// Step 4: Manager dapat menugaskan pendaftaran ke admin2 (reassign) -> Harus 200 OK
+	w4 := httptest.NewRecorder()
+	r4, _ := http.NewRequest("PUT", "/admin/pendaftaran/"+nomor+"/assign", bytes.NewBuffer(reqBody))
+	r4.Header.Set("Authorization", "Bearer "+managerToken)
+	r4.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w4, r4)
+
+	if w4.Code != http.StatusOK {
+		t.Fatalf("Expected 200 when Manager assigns to admin2, got %d: %s", w4.Code, w4.Body.String())
+	}
+
+	config.DB.Where("nomor_pendaftaran = ?", nomor).First(&p)
+	if p.UserID == nil || *p.UserID != admin2.ID {
+		t.Errorf("Expected UserID to be re-assigned to admin2 by manager, got %v", p.UserID)
+	}
+}
+
+func TestAdminJamaahFilterAndCount(t *testing.T) {
+	router, cleanup := setupTestApp(t)
+	defer cleanup()
+
+	admin1 := createTestUser("admin", "Admin Satu Jamaah")
+	admin2 := createTestUser("admin", "Admin Dua Jamaah")
+	manager := createTestUser("manager", "Administration Manager")
+
+	managerToken := makeJWT(manager.ID.String(), manager.Role, manager.Nama)
+
+	cust1 := createTestCustomer("1111222233334444", "Jamaah Admin Satu")
+	cust2 := createTestCustomer("5555666677778888", "Jamaah Admin Dua")
+	paket := createTestPaket()
+
+	invNo1 := "INV-J1-" + uuid.New().String()[:8]
+	inv1 := models.Invoice{
+		NomorInvoice:     invNo1,
+		TotalOrang:       1,
+		TotalTagihan:     25000000,
+		StatusPembayaran: models.InvoiceStatusBelumBayar,
+		CreatedAt:        time.Now(),
+	}
+	config.DB.Create(&inv1)
+
+	nomor1 := "UMR-J1-" + uuid.New().String()[:8]
+	pd1 := models.Pendaftaran{
+		NomorPendaftaran: nomor1,
+		CustomerNIK:      cust1.NIK,
+		PaketID:          paket.ID,
+		NomorInvoice:     invNo1,
+		DocumentStatus:   helpers.DocumentBelum,
+		Status:           helpers.StatusProses,
+		TanggalDaftar:    time.Now(),
+		UserID:           &admin1.ID,
+	}
+	config.DB.Create(&pd1)
+
+	defer func() {
+		config.DB.Where("nomor_pendaftaran = ?", nomor1).Delete(&models.Pendaftaran{})
+		config.DB.Where("nomor_invoice = ?", invNo1).Delete(&models.Invoice{})
+		config.DB.Where("nik IN ?", []string{cust1.NIK, cust2.NIK}).Delete(&models.Customer{})
+		config.DB.Where("id = ?", paket.ID).Delete(&models.PaketUmroh{})
+		config.DB.Where("id IN ?", []uuid.UUID{admin1.ID, admin2.ID, manager.ID}).Delete(&models.User{})
+	}()
+
+	// 1. Cek GetAdminList -> admin1 has total_jamaah = 1, admin2 has total_jamaah = 0
+	wAdminList := httptest.NewRecorder()
+	rAdminList, _ := http.NewRequest("GET", "/manager/admin", nil)
+	rAdminList.Header.Set("Authorization", "Bearer "+managerToken)
+	router.ServeHTTP(wAdminList, rAdminList)
+
+	if wAdminList.Code != http.StatusOK {
+		t.Fatalf("Expected 200 on /manager/admin, got %d: %s", wAdminList.Code, wAdminList.Body.String())
+	}
+
+	var resAdminList struct {
+		Admins []struct {
+			ID          string `json:"id"`
+			Nama        string `json:"nama"`
+			TotalJamaah int64  `json:"total_jamaah"`
+		} `json:"admins"`
+	}
+	_ = json.Unmarshal(wAdminList.Body.Bytes(), &resAdminList)
+
+	var count1, count2 int64
+	var found1, found2 bool
+	for _, a := range resAdminList.Admins {
+		if a.ID == admin1.ID.String() {
+			count1 = a.TotalJamaah
+			found1 = true
+		}
+		if a.ID == admin2.ID.String() {
+			count2 = a.TotalJamaah
+			found2 = true
+		}
+	}
+
+	if !found1 || count1 != 1 {
+		t.Errorf("Expected admin1 total_jamaah = 1, got found=%v, count=%d", found1, count1)
+	}
+	if !found2 || count2 != 0 {
+		t.Errorf("Expected admin2 total_jamaah = 0, got found=%v, count=%d", found2, count2)
+	}
+
+	// 2. Cek GetAllPendaftaran dengan ?admin_id=admin1.ID
+	wFiltered1 := httptest.NewRecorder()
+	rFiltered1, _ := http.NewRequest("GET", "/admin/pendaftaran?admin_id="+admin1.ID.String(), nil)
+	rFiltered1.Header.Set("Authorization", "Bearer "+managerToken)
+	router.ServeHTTP(wFiltered1, rFiltered1)
+
+	if wFiltered1.Code != http.StatusOK {
+		t.Fatalf("Expected 200 on /admin/pendaftaran?admin_id, got %d: %s", wFiltered1.Code, wFiltered1.Body.String())
+	}
+
+	var resFiltered1 struct {
+		Total int `json:"total"`
+		Data  []struct {
+			NomorPendaftaran string `json:"nomor_pendaftaran"`
+			AdminPic         string `json:"admin_pic"`
+			AdminID          string `json:"admin_id"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(wFiltered1.Body.Bytes(), &resFiltered1)
+
+	if resFiltered1.Total != 1 || len(resFiltered1.Data) != 1 || resFiltered1.Data[0].NomorPendaftaran != nomor1 {
+		t.Errorf("Expected 1 pendaftaran for admin1, got total=%d, data=%+v", resFiltered1.Total, resFiltered1.Data)
+	}
+
+	// 3. Cek GetAllPendaftaran dengan ?admin_id=admin2.ID (harus kosong / 0)
+	wFiltered2 := httptest.NewRecorder()
+	rFiltered2, _ := http.NewRequest("GET", "/admin/pendaftaran?admin_id="+admin2.ID.String(), nil)
+	rFiltered2.Header.Set("Authorization", "Bearer "+managerToken)
+	router.ServeHTTP(wFiltered2, rFiltered2)
+
+	if wFiltered2.Code != http.StatusOK {
+		t.Fatalf("Expected 200 on /admin/pendaftaran?admin_id, got %d: %s", wFiltered2.Code, wFiltered2.Body.String())
+	}
+
+	var resFiltered2 struct {
+		Total int `json:"total"`
+		Data  []interface{} `json:"data"`
+	}
+	_ = json.Unmarshal(wFiltered2.Body.Bytes(), &resFiltered2)
+
+	if resFiltered2.Total != 0 || len(resFiltered2.Data) != 0 {
+		t.Errorf("Expected 0 pendaftaran for admin2, got total=%d", resFiltered2.Total)
+	}
+
+	// 4. Cek dedicated endpoint /manager/admin/:id/jamaah
+	wJamaah1 := httptest.NewRecorder()
+	rJamaah1, _ := http.NewRequest("GET", "/manager/admin/"+admin1.ID.String()+"/jamaah", nil)
+	rJamaah1.Header.Set("Authorization", "Bearer "+managerToken)
+	router.ServeHTTP(wJamaah1, rJamaah1)
+
+	if wJamaah1.Code != http.StatusOK {
+		t.Fatalf("Expected 200 on /manager/admin/:id/jamaah, got %d: %s", wJamaah1.Code, wJamaah1.Body.String())
+	}
+
+	var resJamaah1 struct {
+		TotalJamaah int64 `json:"total_jamaah"`
+		Admin       struct {
+			Nama string `json:"nama"`
+		} `json:"admin"`
+		Data []struct {
+			NomorPendaftaran string `json:"nomor_pendaftaran"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(wJamaah1.Body.Bytes(), &resJamaah1)
+
+	if resJamaah1.TotalJamaah != 1 || len(resJamaah1.Data) != 1 || resJamaah1.Data[0].NomorPendaftaran != nomor1 {
+		t.Errorf("Expected /manager/admin/:id/jamaah to return 1 jamaah for admin1, got %+v", resJamaah1)
+	}
+}
+

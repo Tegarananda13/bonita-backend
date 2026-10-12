@@ -10,6 +10,7 @@ import (
 	"bonita-backend/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // ── CreateAdmin — POST /manager/admin ──────────────────────────────────────────
@@ -105,15 +106,19 @@ func GetAdminList(c *gin.Context) {
 
 	var result []gin.H
 	for _, admin := range admins {
+		var jamaahCount int64
+		config.DB.Model(&models.Pendaftaran{}).Where("user_id = ?", admin.ID).Count(&jamaahCount)
+
 		result = append(result, gin.H{
-			"id":         admin.ID,
-			"nama":       admin.Nama,
-			"username":   admin.Username,
-			"role":       admin.Role,
-			"no_hp":      admin.NoHP,
-			"email":      admin.Email,
-			"is_active":  admin.IsActive,
-			"created_at": admin.CreatedAt,
+			"id":           admin.ID,
+			"nama":         admin.Nama,
+			"username":     admin.Username,
+			"role":         admin.Role,
+			"no_hp":        admin.NoHP,
+			"email":        admin.Email,
+			"is_active":    admin.IsActive,
+			"created_at":   admin.CreatedAt,
+			"total_jamaah": jamaahCount,
 		})
 	}
 
@@ -134,16 +139,20 @@ func GetAdminDetail(c *gin.Context) {
 		return
 	}
 
+	var jamaahCount int64
+	config.DB.Model(&models.Pendaftaran{}).Where("user_id = ?", admin.ID).Count(&jamaahCount)
+
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
-			"id":         admin.ID,
-			"nama":       admin.Nama,
-			"username":   admin.Username,
-			"role":       admin.Role,
-			"no_hp":      admin.NoHP,
-			"email":      admin.Email,
-			"is_active":  admin.IsActive,
-			"created_at": admin.CreatedAt,
+			"id":           admin.ID,
+			"nama":         admin.Nama,
+			"username":     admin.Username,
+			"role":         admin.Role,
+			"no_hp":        admin.NoHP,
+			"email":        admin.Email,
+			"is_active":    admin.IsActive,
+			"created_at":   admin.CreatedAt,
+			"total_jamaah": jamaahCount,
 		},
 	})
 }
@@ -286,3 +295,85 @@ func DeleteAdmin(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Admin berhasil dihapus"})
 }
+
+// ── GetAdminJamaah — GET /manager/admin/:id/jamaah ──────────────────────────────
+// Mengembalikan data admin beserta seluruh pendaftaran jamaah yang ditangani oleh admin tersebut
+func GetAdminJamaah(c *gin.Context) {
+	id := c.Param("id")
+
+	adminUUID, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID Admin tidak valid"})
+		return
+	}
+
+	var admin models.User
+	if err := config.DB.First(&admin, "id = ? AND role = ?", adminUUID, "admin").Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Admin tidak ditemukan"})
+		return
+	}
+
+	helpers.SyncActivePendaftaran()
+
+	var pendaftaranList []models.Pendaftaran
+	if err := config.DB.
+		Preload("Customer").
+		Preload("Paket").
+		Preload("Invoice").
+		Where("user_id = ?", adminUUID).
+		Find(&pendaftaranList).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil daftar jamaah admin"})
+		return
+	}
+
+	sortPendaftaran(pendaftaranList)
+
+	var result []gin.H
+	for _, p := range pendaftaranList {
+		nomorInvoice := p.NomorInvoice
+		totalTagihan := p.Paket.Harga
+		totalPembayaran := 0.0
+		if p.NomorInvoice != "" {
+			totalTagihan = p.Invoice.TotalTagihan
+			totalPembayaran = p.Invoice.TotalPembayaran
+		}
+		result = append(result, gin.H{
+			"nomor_pendaftaran": p.NomorPendaftaran,
+			"nomor_invoice":     nomorInvoice,
+			"nama_customer":     p.Customer.Nama,
+			"nik_customer":      p.Customer.NIK,
+			"paket":             p.Paket.NamaPaket,
+			"tanggal_berangkat": p.Paket.TanggalBerangkat,
+			"payment_status":    paymentStatusFromPendaftaran(p),
+			"document_status":   p.DocumentStatus,
+			"status":            p.Status,
+			"tanggal_daftar":    p.TanggalDaftar,
+			"total_tagihan":     totalTagihan,
+			"total_pembayaran":  totalPembayaran,
+			"user_id":           p.UserID,
+			"admin_id":          p.UserID,
+			"admin_pic":         admin.Nama,
+		})
+	}
+
+	if result == nil {
+		result = []gin.H{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"admin": gin.H{
+			"id":           admin.ID,
+			"nama":         admin.Nama,
+			"username":     admin.Username,
+			"role":         admin.Role,
+			"email":        admin.Email,
+			"no_hp":        admin.NoHP,
+			"is_active":    admin.IsActive,
+			"total_jamaah": len(result),
+		},
+		"total":        len(result),
+		"total_jamaah": len(result),
+		"data":         result,
+	})
+}
+

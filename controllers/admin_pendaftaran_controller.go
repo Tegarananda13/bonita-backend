@@ -134,14 +134,22 @@ func GetAllPendaftaran(c *gin.Context) {
 	// Sinkronisasi status pendaftaran aktif sebelum mengambil data
 	helpers.SyncActivePendaftaran()
 
-	var pendaftaran []models.Pendaftaran
-
-	if err := config.DB.
+	query := config.DB.
 		Preload("Customer").
 		Preload("Paket").
 		Preload("Invoice").
 		Preload("Approver").
-		Find(&pendaftaran).Error; err != nil {
+		Preload("User")
+
+	adminIDParam := strings.TrimSpace(c.Query("admin_id"))
+	if adminIDParam != "" {
+		if parsedID, err := uuid.Parse(adminIDParam); err == nil {
+			query = query.Where("user_id = ?", parsedID)
+		}
+	}
+
+	var pendaftaran []models.Pendaftaran
+	if err := query.Find(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data pendaftaran"})
 		return
 	}
@@ -161,9 +169,20 @@ func GetAllPendaftaran(c *gin.Context) {
 		if p.Approver != nil {
 			approverNama = p.Approver.Nama
 		}
+		var adminPic string
+		var adminID *uuid.UUID
+		if p.UserID != nil {
+			adminID = p.UserID
+			if p.User.Nama != "" {
+				adminPic = p.User.Nama
+			}
+		}
 		result = append(result, gin.H{
 			"nomor_pendaftaran":          p.NomorPendaftaran,
 			"nomor_invoice":              nomorInvoice,
+			"user_id":                    adminID,
+			"admin_id":                   adminID,
+			"admin_pic":                  adminPic,
 			"nama_customer":              p.Customer.Nama,
 			"paket":                      p.Paket.NamaPaket,
 			"tanggal_berangkat":          p.Paket.TanggalBerangkat,
@@ -351,7 +370,7 @@ func GetDetailPendaftaran(c *gin.Context) {
 	})
 }
 
-// AssignPendaftaran — PUT /pic/pendaftaran/:nomor/assign
+// AssignPendaftaran — PUT /admin/pendaftaran/:nomor/assign
 func AssignPendaftaran(c *gin.Context) {
 	nomor := c.Param("nomor")
 
@@ -370,22 +389,67 @@ func AssignPendaftaran(c *gin.Context) {
 		return
 	}
 
-	if pendaftaran.UserID != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Pendaftaran sudah ditangani admin"})
-		return
+	// Cek role pemanggil API
+	userRole, _ := c.Get("role")
+	roleStr, _ := userRole.(string)
+	isManager := roleStr == "owner" || roleStr == "manager" || roleStr == "administration_manager"
+
+	// Input opsional jika Administration Manager ingin menugaskan admin tertentu
+	type AssignReq struct {
+		AdminID string `json:"admin_id"`
+	}
+	var req AssignReq
+	_ = c.ShouldBindJSON(&req)
+
+	targetAdminID := userID
+
+	if req.AdminID != "" && req.AdminID != "me" {
+		if !isManager {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Hanya Administration Manager yang dapat menugaskan pendaftaran ke admin lain"})
+			return
+		}
+		parsedTarget, err := uuid.Parse(req.AdminID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Admin ID tidak valid"})
+			return
+		}
+		var targetUser models.User
+		if err := config.DB.First(&targetUser, "id = ?", parsedTarget).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Admin yang dipilih tidak ditemukan"})
+			return
+		}
+		targetAdminID = parsedTarget
 	}
 
-	pendaftaran.UserID = &userID
-	if err := config.DB.Save(&pendaftaran).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil pendaftaran"})
-		return
+	if isManager {
+		// Administration Manager berhak menugaskan atau mengganti PIC (reassign)
+		pendaftaran.UserID = &targetAdminID
+		if err := config.DB.Save(&pendaftaran).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan penugasan pendaftaran"})
+			return
+		}
+	} else {
+		// Admin biasa: hanya bisa mengambil pendaftaran yang BELUM memiliki PIC (user_id IS NULL)
+		// Atomic update pada WHERE user_id IS NULL untuk mencegah race condition dua Admin mengambil bersamaan
+		res := config.DB.Model(&models.Pendaftaran{}).
+			Where("nomor_pendaftaran = ? AND user_id IS NULL", nomor).
+			Update("user_id", targetAdminID)
+
+		if res.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil pendaftaran"})
+			return
+		}
+		if res.RowsAffected == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Pendaftaran sudah ditangani admin"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Pendaftaran berhasil diambil",
+		"message": "Pendaftaran berhasil ditugaskan",
 		"data": gin.H{
 			"nomor_pendaftaran": pendaftaran.NomorPendaftaran,
-			"admin_id":          userID,
+			"admin_id":          targetAdminID,
 		},
 	})
 }

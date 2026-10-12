@@ -321,6 +321,7 @@ func SetupRoutes(r *gin.Engine) {
 		manager.POST("/admin", controllers.CreateAdmin)
 		manager.GET("/admin", controllers.GetAdminList)
 		manager.GET("/admin/:id", controllers.GetAdminDetail)
+		manager.GET("/admin/:id/jamaah", controllers.GetAdminJamaah)
 		manager.PUT("/admin/:id", controllers.UpdateAdmin)
 		manager.PATCH("/admin/:id/deactivate", controllers.DeactivateAdmin)
 		manager.PATCH("/admin/:id/reactivate", controllers.ReactivateAdmin)
