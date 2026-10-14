@@ -657,6 +657,7 @@ func GetDetailPaketAdmin(c *gin.Context) {
 		Preload("Customer").
 		Preload("User").
 		Preload("Invoice").
+		Preload("Pembatal").
 		Where("paket_id = ?", paket.ID).
 		Order("tanggal_daftar DESC").
 		Find(&pendaftaranList)
@@ -683,7 +684,7 @@ func GetDetailPaketAdmin(c *gin.Context) {
 		case helpers.StatusSelesai:
 			jumlahSelesai++
 		}
-		if p.Status == "batal" {
+		if p.Status == "batal" || p.Status == helpers.StatusBatal {
 			jumlahBatal++
 		}
 	}
@@ -698,14 +699,23 @@ func GetDetailPaketAdmin(c *gin.Context) {
 			picNama = p.User.Nama
 		}
 
+		var pembatalNama string
+		if p.Pembatal != nil {
+			pembatalNama = p.Pembatal.Nama
+		}
+
 		jamaahList = append(jamaahList, gin.H{
-			"nomor_pendaftaran": p.NomorPendaftaran,
-			"nama_customer":     p.Customer.Nama,
-			"pic":               picNama,
-			"status":            p.Status,
-			"payment_status":    paymentStatusFromPendaftaran(p),
-			"document_status":   p.DocumentStatus,
-			"tanggal_daftar":    p.TanggalDaftar,
+			"nomor_pendaftaran":    p.NomorPendaftaran,
+			"nama_customer":        p.Customer.Nama,
+			"pic":                  picNama,
+			"status":               p.Status,
+			"payment_status":       paymentStatusFromPendaftaran(p),
+			"document_status":      p.DocumentStatus,
+			"tanggal_daftar":       p.TanggalDaftar,
+			"alasan_pembatalan":    p.AlasanPembatalan,
+			"dibatalkan_pada":      p.DibatalkanPada,
+			"dibatalkan_oleh":      p.DibatalkanOleh,
+			"dibatalkan_oleh_nama": pembatalNama,
 		})
 	}
 

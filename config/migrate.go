@@ -110,6 +110,10 @@ func Migrate() {
 	DB.Exec(`ALTER TABLE pendaftaran DROP CONSTRAINT IF EXISTS fk_pendaftaran_approved_by`)
 	DB.Exec(`ALTER TABLE pendaftaran ADD CONSTRAINT fk_pendaftaran_approved_by FOREIGN KEY (approved_by) REFERENCES "user"(id) ON UPDATE CASCADE ON DELETE SET NULL`)
 
+	// Step 1g: Restore FK dibatalkan_oleh ke "user"(id) (idempoten)
+	DB.Exec(`ALTER TABLE pendaftaran DROP CONSTRAINT IF EXISTS fk_pendaftaran_dibatalkan_oleh`)
+	DB.Exec(`ALTER TABLE pendaftaran ADD CONSTRAINT fk_pendaftaran_dibatalkan_oleh FOREIGN KEY (dibatalkan_oleh) REFERENCES "user"(id) ON UPDATE CASCADE ON DELETE SET NULL`)
+
 	// Step 2: Isi kolom NIK yang kosong dengan nilai placeholder unik
 	DB.Exec(`
 		UPDATE customer

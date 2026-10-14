@@ -182,6 +182,26 @@ func SetupRoutes(r *gin.Engine) {
 			controllers.GetDetailPendaftaran,
 		)
 
+		admin.POST(
+			"/pendaftaran/:nomor/batal",
+			controllers.AdminBatalkanPendaftaran,
+		)
+
+		admin.PUT(
+			"/pendaftaran/:nomor/batal",
+			controllers.AdminBatalkanPendaftaran,
+		)
+
+		admin.PUT(
+			"/pendaftaran/:nomor/perlengkapan",
+			controllers.AdminUpdatePerlengkapan,
+		)
+
+		admin.GET(
+			"/perlengkapan/master",
+			controllers.GetPerlengkapanMaster,
+		)
+
 		admin.GET(
 			"/pendaftaran/:nomor/status",
 			controllers.GetPendaftaranStatus,

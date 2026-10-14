@@ -28,6 +28,7 @@ func main() {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins: []string{
 			"http://localhost:5173",
+			// "http://192.168.110.174:5173",
 		},
 		AllowMethods: []string{
 			"GET",
@@ -51,4 +52,5 @@ func main() {
 	controllers.StartExpiryScheduler()
 
 	r.Run(":8080")
+	// r.Run("0.0.0.0:8080")
 }

@@ -294,6 +294,11 @@ func buildDaftarJamaahHTML(semuaPendaftaran []models.Pendaftaran) (string, int) 
 	var jumlahAmbilPerlengkapan int
 
 	for i, pd := range semuaPendaftaran {
+		namaDisplay := pd.Customer.Nama
+		if pd.Status == "batal" || pd.Status == helpers.StatusBatal {
+			namaDisplay += ` <span style="display:inline-block;margin-left:0.4rem;padding:2px 8px;font-size:0.7rem;font-weight:700;background:#fee2e2;color:#991b1b;border-radius:999px;">Batal</span>`
+		}
+
 		jamaahHTML.WriteString(fmt.Sprintf(`
 			<div class="inv-jamaah-block">
 				<div class="inv-info-item">
@@ -304,7 +309,7 @@ func buildDaftarJamaahHTML(semuaPendaftaran []models.Pendaftaran) (string, int) 
 					<div class="inv-info-label">Nomor UMR Jamaah %d</div>
 					<div class="inv-info-val" style="font-family:'Courier New',monospace">%s</div>
 				</div>`,
-			i+1, pd.Customer.Nama,
+			i+1, namaDisplay,
 			i+1, pd.NomorPendaftaran,
 		))
 

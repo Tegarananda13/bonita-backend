@@ -81,10 +81,15 @@ func SyncPendaftaranStatus(nomorInvoice string) {
 		return
 	}
 
-	// 3. Periksa dan sinkronisasi kelengkapan dokumen masing-masing jamaah
+	// 3. Periksa dan sinkronisasi kelengkapan dokumen masing-masing jamaah aktif
 	allDocsLengkap := true
+	activeJamaahCount := 0
 	for i := range pendaftaranList {
 		p := &pendaftaranList[i]
+		if p.Status == StatusSelesai || p.Status == StatusKadaluarsa || p.Status == StatusBatal || p.Status == "batal" {
+			continue
+		}
+		activeJamaahCount++
 
 		var docs []models.Dokumen
 		config.DB.Where("nomor_pendaftaran = ?", p.NomorPendaftaran).Order("created_at ASC").Find(&docs)
@@ -101,6 +106,9 @@ func SyncPendaftaranStatus(nomorInvoice string) {
 			allDocsLengkap = false
 		}
 	}
+	if activeJamaahCount == 0 {
+		allDocsLengkap = false
+	}
 
 	// 4. Tentukan status utama grup (menunggu_verifikasi_manager jika lunas + semua jamaah lengkap)
 	defaultTargetStatus := DetermineGroupMainStatus(paymentLunas, allDocsLengkap)
@@ -109,7 +117,7 @@ func SyncPendaftaranStatus(nomorInvoice string) {
 	statusUpdated := false
 	for _, p := range pendaftaranList {
 		// Pertahankan status terminal (selesai, kadaluarsa, batal)
-		if p.Status == StatusSelesai || p.Status == StatusKadaluarsa || p.Status == "batal" {
+		if p.Status == StatusSelesai || p.Status == StatusKadaluarsa || p.Status == StatusBatal || p.Status == "batal" {
 			continue
 		}
 
@@ -163,7 +171,7 @@ func SyncPendaftaranStatusByNomor(nomorPendaftaran string) {
 	}
 
 	// Pendaftaran tanpa invoice
-	if p.Status == StatusSelesai || p.Status == StatusKadaluarsa || p.Status == "batal" {
+	if p.Status == StatusSelesai || p.Status == StatusKadaluarsa || p.Status == StatusBatal || p.Status == "batal" {
 		return
 	}
 
@@ -202,7 +210,7 @@ func UpdateStatusPendaftaran(nomorPendaftaran string) {
 func SyncActivePendaftaran() {
 	var activeInvoices []string
 	config.DB.Model(&models.Pendaftaran{}).
-		Where("status NOT IN (?, ?, ?) AND nomor_invoice != ''", StatusSelesai, StatusKadaluarsa, StatusPerluPerbaikan).
+		Where("status NOT IN (?, ?, ?, ?) AND nomor_invoice != ''", StatusSelesai, StatusKadaluarsa, StatusPerluPerbaikan, StatusBatal).
 		Distinct("nomor_invoice").
 		Pluck("nomor_invoice", &activeInvoices)
 
@@ -211,7 +219,7 @@ func SyncActivePendaftaran() {
 	}
 
 	var noInvoiceList []models.Pendaftaran
-	config.DB.Where("status NOT IN (?, ?, ?) AND (nomor_invoice IS NULL OR nomor_invoice = '')", StatusSelesai, StatusKadaluarsa, StatusPerluPerbaikan).
+	config.DB.Where("status NOT IN (?, ?, ?, ?) AND (nomor_invoice IS NULL OR nomor_invoice = '')", StatusSelesai, StatusKadaluarsa, StatusPerluPerbaikan, StatusBatal).
 		Find(&noInvoiceList)
 
 	for _, p := range noInvoiceList {

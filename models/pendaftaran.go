@@ -28,10 +28,16 @@ type Pendaftaran struct {
 	ApprovedAt               *time.Time `gorm:"column:approved_at"`
 	CatatanVerifikasiManager *string    `gorm:"type:text;column:catatan_verifikasi_manager"`
 
+	// Pembatalan Pendaftaran
+	AlasanPembatalan *string    `gorm:"type:text;column:alasan_pembatalan"`
+	DibatalkanPada   *time.Time `gorm:"column:dibatalkan_pada"`
+	DibatalkanOleh   *uuid.UUID `gorm:"type:uuid;column:dibatalkan_oleh"`
+
 	// Relasi
 	Customer Customer   `gorm:"foreignKey:CustomerNIK;references:NIK"`
 	Paket    PaketUmroh `gorm:"foreignKey:PaketID"`
 	User     User       `gorm:"foreignKey:UserID"`
 	Invoice  Invoice    `gorm:"foreignKey:NomorInvoice;references:NomorInvoice"`
 	Approver *User      `gorm:"foreignKey:ApprovedBy;references:ID"`
+	Pembatal *User      `gorm:"foreignKey:DibatalkanOleh;references:ID"`
 }

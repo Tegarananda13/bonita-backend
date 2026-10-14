@@ -23,6 +23,7 @@ const (
 	StatusSiapBerangkat             = "siap_berangkat"
 	StatusSelesai                   = "selesai"
 	StatusKadaluarsa                = "kadaluarsa"
+	StatusBatal                     = "batal"
 
 	// Pengaduan
 	PengaduanMenunggu = "menunggu"

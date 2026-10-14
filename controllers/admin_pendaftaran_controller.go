@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"bonita-backend/config"
 	"bonita-backend/helpers"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // paymentStatusFromPendaftaran mengambil payment_status dari Invoice milik Pendaftaran.
@@ -139,6 +141,7 @@ func GetAllPendaftaran(c *gin.Context) {
 		Preload("Paket").
 		Preload("Invoice").
 		Preload("Approver").
+		Preload("Pembatal").
 		Preload("User")
 
 	adminIDParam := strings.TrimSpace(c.Query("admin_id"))
@@ -168,6 +171,10 @@ func GetAllPendaftaran(c *gin.Context) {
 		var approverNama string
 		if p.Approver != nil {
 			approverNama = p.Approver.Nama
+		}
+		var pembatalNama string
+		if p.Pembatal != nil {
+			pembatalNama = p.Pembatal.Nama
 		}
 		var adminPic string
 		var adminID *uuid.UUID
@@ -199,6 +206,10 @@ func GetAllPendaftaran(c *gin.Context) {
 			"approved_by":                p.ApprovedBy,
 			"approved_at":                p.ApprovedAt,
 			"approver_nama":              approverNama,
+			"alasan_pembatalan":          p.AlasanPembatalan,
+			"dibatalkan_pada":            p.DibatalkanPada,
+			"dibatalkan_oleh":            p.DibatalkanOleh,
+			"dibatalkan_oleh_nama":       pembatalNama,
 		})
 	}
 
@@ -260,8 +271,8 @@ func GetDetailPendaftaran(c *gin.Context) {
 
 	var current models.Pendaftaran
 	config.DB.Select("status").Where("nomor_pendaftaran = ?", nomor).First(&current)
-	if current.Status != helpers.StatusPerluPerbaikan {
-		// Pastikan status grup dan dokumen pendaftaran ini tersinkronisasi jika bukan dalam tahap perbaikan
+	if current.Status != helpers.StatusPerluPerbaikan && current.Status != helpers.StatusBatal && current.Status != "batal" {
+		// Pastikan status grup dan dokumen pendaftaran ini tersinkronisasi jika bukan dalam tahap perbaikan atau batal
 		helpers.SyncPendaftaranStatusByNomor(nomor)
 	}
 
@@ -272,6 +283,7 @@ func GetDetailPendaftaran(c *gin.Context) {
 		Preload("User").
 		Preload("Invoice").
 		Preload("Approver").
+		Preload("Pembatal").
 		Where("nomor_pendaftaran = ?", nomor).
 		First(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
@@ -321,6 +333,8 @@ func GetDetailPendaftaran(c *gin.Context) {
 			"nomor_pendaftaran":  gp.NomorPendaftaran,
 			"nama":               gp.Customer.Nama,
 			"nik":                gp.Customer.NIK,
+			"status":             gp.Status,
+			"alasan_pembatalan":  gp.AlasanPembatalan,
 			"ambil_perlengkapan": gp.AmbilPerlengkapan,
 			"harga_perlengkapan": gp.HargaPerlengkapan,
 		})
@@ -336,6 +350,24 @@ func GetDetailPendaftaran(c *gin.Context) {
 			"username": pendaftaran.Approver.Username,
 			"role":     pendaftaran.Approver.Role,
 		}
+	}
+
+	pembatalNama := ""
+	if pendaftaran.Pembatal != nil {
+		pembatalNama = pendaftaran.Pembatal.Nama
+	}
+
+	infoPerlengkapan := gin.H{
+		"harga": helpers.DefaultHargaPerlengkapan,
+		"nama":  "Paket Perlengkapan Tambahan Umroh",
+		"items": []string{
+			"Koper 22\"",
+			"Koper 24\"",
+			"Kain Ihram / Mukena",
+			"Ikat Pinggang",
+			"Buku Doa",
+			"Tas Paspor / Tas Pinggang",
+		},
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -363,10 +395,15 @@ func GetDetailPendaftaran(c *gin.Context) {
 			"approved_at":                pendaftaran.ApprovedAt,
 			"approver":                   approverObj,
 			"approver_nama":              approverNama,
+			"alasan_pembatalan":          pendaftaran.AlasanPembatalan,
+			"dibatalkan_pada":            pendaftaran.DibatalkanPada,
+			"dibatalkan_oleh":            pendaftaran.DibatalkanOleh,
+			"dibatalkan_oleh_nama":       pembatalNama,
 		},
-		"pembayaran":  pembayaran,
-		"dokumen":     dokumen,
-		"grup_jamaah": grupJamaah,
+		"pembayaran":        pembayaran,
+		"dokumen":           dokumen,
+		"grup_jamaah":       grupJamaah,
+		"info_perlengkapan": infoPerlengkapan,
 	})
 }
 
@@ -524,7 +561,15 @@ func AdminAjukanVerifikasi(c *gin.Context) {
 		return
 	}
 
-	// 1. Ambil seluruh pendaftaran dalam invoice grup atau individu
+	// 1. Validasi: pendaftaran tidak boleh berstatus batal
+	if pendaftaran.Status == helpers.StatusBatal || pendaftaran.Status == "batal" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"error": "Pendaftaran yang sudah dibatalkan tidak dapat diajukan untuk verifikasi",
+		})
+		return
+	}
+
+	// 2. Ambil seluruh pendaftaran dalam invoice grup atau individu
 	var pendaftaranList []models.Pendaftaran
 	if pendaftaran.NomorInvoice != "" {
 		config.DB.Where("nomor_invoice = ?", pendaftaran.NomorInvoice).Find(&pendaftaranList)
@@ -532,8 +577,11 @@ func AdminAjukanVerifikasi(c *gin.Context) {
 		pendaftaranList = []models.Pendaftaran{pendaftaran}
 	}
 
-	// 2. Validasi dokumen seluruh jamaah
+	// 3. Validasi dokumen seluruh jamaah aktif
 	for _, p := range pendaftaranList {
+		if p.Status == helpers.StatusBatal || p.Status == "batal" || p.Status == helpers.StatusSelesai || p.Status == helpers.StatusKadaluarsa {
+			continue
+		}
 		var docs []models.Dokumen
 		config.DB.Where("nomor_pendaftaran = ?", p.NomorPendaftaran).Find(&docs)
 		if helpers.CalculateDocumentStatus(docs) != helpers.DocumentLengkap {
@@ -544,7 +592,7 @@ func AdminAjukanVerifikasi(c *gin.Context) {
 		}
 	}
 
-	// 3. Validasi pembayaran lunas
+	// 4. Validasi pembayaran lunas
 	if pendaftaran.NomorInvoice != "" {
 		var invoice models.Invoice
 		config.DB.Where("nomor_invoice = ?", pendaftaran.NomorInvoice).First(&invoice)
@@ -556,8 +604,11 @@ func AdminAjukanVerifikasi(c *gin.Context) {
 		}
 	}
 
-	// 4. Update status seluruh pendaftaran menjadi menunggu_verifikasi_manager
+	// 5. Update status seluruh pendaftaran aktif menjadi menunggu_verifikasi_manager
 	for _, p := range pendaftaranList {
+		if p.Status == helpers.StatusBatal || p.Status == "batal" || p.Status == helpers.StatusSelesai || p.Status == helpers.StatusKadaluarsa {
+			continue
+		}
 		config.DB.Model(&models.Pendaftaran{}).
 			Where("nomor_pendaftaran = ?", p.NomorPendaftaran).
 			Updates(map[string]interface{}{
@@ -570,3 +621,280 @@ func AdminAjukanVerifikasi(c *gin.Context) {
 		"status":  helpers.StatusMenungguVerifikasiManager,
 	})
 }
+
+// GetPerlengkapanMaster mengembalikan informasi paket perlengkapan tambahan resmi
+func GetPerlengkapanMaster(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"harga": helpers.DefaultHargaPerlengkapan,
+		"nama":  "Paket Perlengkapan Tambahan Umroh",
+		"items": []string{
+			"Koper 22\"",
+			"Koper 24\"",
+			"Kain Ihram / Mukena",
+			"Ikat Pinggang",
+			"Buku Doa",
+			"Tas Paspor / Tas Pinggang",
+		},
+	})
+}
+
+type UpdatePerlengkapanRequest struct {
+	AmbilPerlengkapan bool `json:"ambil_perlengkapan"`
+}
+
+// AdminUpdatePerlengkapan memperbarui pilihan perlengkapan tambahan seorang jamaah
+// dan menghitung ulang total perlengkapan, total tagihan, serta status pembayaran invoice.
+func AdminUpdatePerlengkapan(c *gin.Context) {
+	nomor := c.Param("nomor")
+	var req UpdatePerlengkapanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid"})
+		return
+	}
+
+	tx := config.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	var pendaftaran models.Pendaftaran
+	if err := tx.Preload("Paket").Preload("Invoice").Where("nomor_pendaftaran = ?", nomor).First(&pendaftaran).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
+		return
+	}
+
+	// Tentukan harga perlengkapan snapshot dari harga master backend
+	var hargaPerl float64 = 0
+	if req.AmbilPerlengkapan {
+		hargaPerl = float64(helpers.DefaultHargaPerlengkapan)
+	}
+
+	// Update pilihan perlengkapan pada pendaftaran jamaah ini saja
+	if err := tx.Model(&models.Pendaftaran{}).
+		Where("nomor_pendaftaran = ?", nomor).
+		Updates(map[string]interface{}{
+			"ambil_perlengkapan": req.AmbilPerlengkapan,
+			"harga_perlengkapan": hargaPerl,
+		}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan perubahan pilihan perlengkapan"})
+		return
+	}
+
+	var newTotalPerlengkapan float64 = 0
+	var newTotalTagihan float64 = 0
+	var newTotalPembayaran float64 = 0
+	var newInvoiceStatus string = models.InvoiceStatusBelumBayar
+
+	if pendaftaran.NomorInvoice != "" {
+		// Muat seluruh pendaftaran dalam invoice yang sama
+		var semuaPendaftaran []models.Pendaftaran
+		if err := tx.Where("nomor_invoice = ?", pendaftaran.NomorInvoice).Find(&semuaPendaftaran).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membaca grup pendaftaran"})
+			return
+		}
+
+		for _, p := range semuaPendaftaran {
+			if p.NomorPendaftaran == nomor {
+				if req.AmbilPerlengkapan {
+					newTotalPerlengkapan += hargaPerl
+				}
+			} else {
+				if p.AmbilPerlengkapan {
+					if p.HargaPerlengkapan > 0 {
+						newTotalPerlengkapan += p.HargaPerlengkapan
+					} else {
+						newTotalPerlengkapan += float64(helpers.DefaultHargaPerlengkapan)
+					}
+				}
+			}
+		}
+
+		totalOrang := len(semuaPendaftaran)
+		if totalOrang == 0 {
+			totalOrang = 1
+		}
+		newTotalTagihan = (pendaftaran.Paket.Harga * float64(totalOrang)) + newTotalPerlengkapan
+
+		// Hitung total pembayaran yang valid dan sudah diverifikasi diterima
+		tx.Model(&models.Pembayaran{}).
+			Where("nomor_invoice = ? AND status = ?", pendaftaran.NomorInvoice, helpers.PaymentVerificationDiterima).
+			Select("COALESCE(SUM(jumlah), 0)").
+			Scan(&newTotalPembayaran)
+
+		if newTotalPembayaran <= 0 {
+			newInvoiceStatus = models.InvoiceStatusBelumBayar
+		} else if newTotalTagihan > 0 && newTotalPembayaran >= newTotalTagihan {
+			newInvoiceStatus = models.InvoiceStatusLunas
+		} else {
+			newInvoiceStatus = models.InvoiceStatusDP
+		}
+
+		if err := tx.Model(&models.Invoice{}).
+			Where("nomor_invoice = ?", pendaftaran.NomorInvoice).
+			Updates(map[string]interface{}{
+				"total_perlengkapan": newTotalPerlengkapan,
+				"total_tagihan":      newTotalTagihan,
+				"total_pembayaran":   newTotalPembayaran,
+				"status_pembayaran":  newInvoiceStatus,
+				"total_orang":        totalOrang,
+			}).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui total tagihan invoice"})
+			return
+		}
+	} else {
+		newTotalTagihan = pendaftaran.Paket.Harga + hargaPerl
+		newTotalPerlengkapan = hargaPerl
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal melakukan commit perubahan"})
+		return
+	}
+
+	// Sinkronisasi status pendaftaran setelah invoice diperbarui
+	if pendaftaran.NomorInvoice != "" {
+		helpers.SyncPendaftaranStatus(pendaftaran.NomorInvoice)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":            "Pilihan perlengkapan berhasil diperbarui",
+		"nomor_pendaftaran":  nomor,
+		"ambil_perlengkapan": req.AmbilPerlengkapan,
+		"harga_perlengkapan": hargaPerl,
+		"total_perlengkapan": newTotalPerlengkapan,
+		"total_tagihan":      newTotalTagihan,
+		"total_pembayaran":   newTotalPembayaran,
+		"status_pembayaran":  newInvoiceStatus,
+	})
+}
+
+type BatalkanPendaftaranRequest struct {
+	Alasan string `json:"alasan"`
+}
+
+// AdminBatalkanPendaftaran membatalkan pendaftaran jamaah secara permanen.
+// Sesuai ketentuan bisnis Bonita Umroh:
+// 1. TIDAK ADA REFUND. Invoice, pembayaran, dan nominal tetap utuh.
+// 2. Transaksi atomic: status -> batal, catat alasan, waktu, admin ID, dan kurangi kuota terpakai paket.
+// 3. Pada grup jamaah, hanya pendaftaran ini yang dibatalkan; anggota grup lain tetap aktif.
+func AdminBatalkanPendaftaran(c *gin.Context) {
+	nomor := c.Param("nomor")
+
+	var req BatalkanPendaftaranRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid"})
+		return
+	}
+
+	alasan := strings.TrimSpace(req.Alasan)
+	if alasan == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Alasan pembatalan wajib diisi."})
+		return
+	}
+
+	// Ambil Admin ID dari JWT token
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User tidak terautentikasi"})
+		return
+	}
+	adminUUID, err := uuid.Parse(userIDVal.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID Admin tidak valid"})
+		return
+	}
+
+	var adminUser models.User
+	if err := config.DB.First(&adminUser, "id = ?", adminUUID).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Data Admin tidak ditemukan"})
+		return
+	}
+
+	tx := config.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	var pendaftaran models.Pendaftaran
+	if err := tx.Where("nomor_pendaftaran = ?", nomor).First(&pendaftaran).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
+		return
+	}
+
+	// Validasi aturan bisnis pembatalan:
+	if pendaftaran.Status == helpers.StatusBatal || pendaftaran.Status == "batal" {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Pendaftaran sudah berstatus batal."})
+		return
+	}
+
+	if pendaftaran.Status == helpers.StatusSelesai {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Pendaftaran yang sudah berstatus selesai tidak dapat dibatalkan."})
+		return
+	}
+
+	if pendaftaran.Status == helpers.StatusKadaluarsa {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Pendaftaran sudah kadaluarsa dan tidak dapat dibatalkan."})
+		return
+	}
+
+	now := time.Now()
+
+	// 1. Update status dan metadata pembatalan pada pendaftaran jamaah ini saja
+	if err := tx.Model(&models.Pendaftaran{}).
+		Where("nomor_pendaftaran = ?", nomor).
+		Updates(map[string]interface{}{
+			"status":            helpers.StatusBatal,
+			"alasan_pembatalan": alasan,
+			"dibatalkan_pada":   now,
+			"dibatalkan_oleh":   adminUUID,
+		}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan pembatalan pendaftaran"})
+		return
+	}
+
+	// 2. Kembalikan kuota paket terpakai (kurangi 1 secara atomik, jaga agar tidak negatif)
+	if err := tx.Model(&models.PaketUmroh{}).
+		Where("id = ?", pendaftaran.PaketID).
+		UpdateColumn("kuota_terpakai", gorm.Expr("GREATEST(kuota_terpakai - 1, 0)")).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengembalikan kuota paket"})
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal melakukan commit pembatalan"})
+		return
+	}
+
+	// 3. Sinkronisasi status pendaftaran grup jika ada (jamaah lain tetap dievaluasi sesuai dokumen & pembayaran mereka)
+	if pendaftaran.NomorInvoice != "" {
+		helpers.SyncPendaftaranStatus(pendaftaran.NomorInvoice)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Pendaftaran berhasil dibatalkan",
+		"data": gin.H{
+			"nomor_pendaftaran":    pendaftaran.NomorPendaftaran,
+			"status":               helpers.StatusBatal,
+			"alasan_pembatalan":    alasan,
+			"dibatalkan_pada":      now,
+			"dibatalkan_oleh":      adminUUID,
+			"dibatalkan_oleh_nama": adminUser.Nama,
+		},
+	})
+}
+
+

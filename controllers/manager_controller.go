@@ -314,8 +314,11 @@ func ManagerApprovePendaftaran(c *gin.Context) {
 		}
 	}
 
-	// 4. Validasi dokumen seluruh jamaah lengkap
+	// 4. Validasi dokumen seluruh jamaah aktif lengkap
 	for _, p := range pendaftaranList {
+		if p.Status == helpers.StatusBatal || p.Status == "batal" || p.Status == helpers.StatusSelesai || p.Status == helpers.StatusKadaluarsa {
+			continue
+		}
 		var docs []models.Dokumen
 		config.DB.Where("nomor_pendaftaran = ?", p.NomorPendaftaran).Find(&docs)
 		if helpers.CalculateDocumentStatus(docs) != helpers.DocumentLengkap {
@@ -340,8 +343,11 @@ func ManagerApprovePendaftaran(c *gin.Context) {
 
 	now := time.Now()
 
-	// 6. Update seluruh pendaftaran dalam invoice grup ke siap_berangkat
+	// 6. Update seluruh pendaftaran aktif dalam invoice grup ke siap_berangkat
 	for _, p := range pendaftaranList {
+		if p.Status == helpers.StatusBatal || p.Status == "batal" || p.Status == helpers.StatusSelesai || p.Status == helpers.StatusKadaluarsa {
+			continue
+		}
 		config.DB.Model(&models.Pendaftaran{}).
 			Where("nomor_pendaftaran = ?", p.NomorPendaftaran).
 			Updates(map[string]interface{}{
@@ -403,8 +409,11 @@ func ManagerMintaPerbaikan(c *gin.Context) {
 		pendaftaranList = []models.Pendaftaran{pendaftaran}
 	}
 
-	// 3. Update status seluruh pendaftaran ke perlu_perbaikan dan simpan catatan
+	// 3. Update status seluruh pendaftaran aktif ke perlu_perbaikan dan simpan catatan
 	for _, p := range pendaftaranList {
+		if p.Status == helpers.StatusBatal || p.Status == "batal" || p.Status == helpers.StatusSelesai || p.Status == helpers.StatusKadaluarsa {
+			continue
+		}
 		config.DB.Model(&models.Pendaftaran{}).
 			Where("nomor_pendaftaran = ?", p.NomorPendaftaran).
 			Updates(map[string]interface{}{

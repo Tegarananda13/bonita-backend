@@ -96,7 +96,7 @@ func GetCustomerDashboard(c *gin.Context) {
 
 	var check models.Pendaftaran
 	config.DB.Select("status").Where("nomor_pendaftaran = ?", nomor).First(&check)
-	if check.Status != helpers.StatusPerluPerbaikan {
+	if check.Status != helpers.StatusPerluPerbaikan && check.Status != helpers.StatusBatal && check.Status != "batal" {
 		// Pastikan status sinkron sebelum mengembalikan data dashboard
 		helpers.SyncPendaftaranStatusByNomor(nomor)
 	}
@@ -174,9 +174,11 @@ func GetCustomerDashboard(c *gin.Context) {
 		"nomor_invoice":    nomorInvoiceDash,
 		"payment_status":   paymentStatus,
 		"document_status":  pendaftaran.DocumentStatus,
-		"status":           pendaftaran.Status,
-		"batas_waktu_dp":   pendaftaran.BatasWaktuDP,
-		"tanggal_daftar":   pendaftaran.TanggalDaftar,
+		"status":            pendaftaran.Status,
+		"alasan_pembatalan": pendaftaran.AlasanPembatalan,
+		"dibatalkan_pada":   pendaftaran.DibatalkanPada,
+		"batas_waktu_dp":    pendaftaran.BatasWaktuDP,
+		"tanggal_daftar":    pendaftaran.TanggalDaftar,
 
 		// Rich nested objects
 		"customer": gin.H{
@@ -382,7 +384,7 @@ func GetCustomerPendaftaranStatus(c *gin.Context) {
 
 	var check models.Pendaftaran
 	config.DB.Select("status").Where("nomor_pendaftaran = ?", nomor).First(&check)
-	if check.Status != helpers.StatusPerluPerbaikan {
+	if check.Status != helpers.StatusPerluPerbaikan && check.Status != helpers.StatusBatal && check.Status != "batal" {
 		helpers.SyncPendaftaranStatusByNomor(nomor)
 	}
 
@@ -408,5 +410,7 @@ func GetCustomerPendaftaranStatus(c *gin.Context) {
 		"payment_status":             paymentStatus,
 		"catatan_verifikasi_manager": p.CatatanVerifikasiManager,
 		"approved_at":                p.ApprovedAt,
+		"alasan_pembatalan":          p.AlasanPembatalan,
+		"dibatalkan_pada":            p.DibatalkanPada,
 	})
 }
