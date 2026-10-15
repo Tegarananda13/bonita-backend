@@ -329,6 +329,10 @@ func GetDetailPendaftaran(c *gin.Context) {
 	}
 	var grupJamaah []gin.H
 	for _, gp := range semuaPendaftaran {
+		var tanggalLahir string
+		if !gp.Customer.TanggalLahir.IsZero() {
+			tanggalLahir = gp.Customer.TanggalLahir.Format("2006-01-02")
+		}
 		grupJamaah = append(grupJamaah, gin.H{
 			"nomor_pendaftaran":  gp.NomorPendaftaran,
 			"nama":               gp.Customer.Nama,
@@ -337,6 +341,17 @@ func GetDetailPendaftaran(c *gin.Context) {
 			"alasan_pembatalan":  gp.AlasanPembatalan,
 			"ambil_perlengkapan": gp.AmbilPerlengkapan,
 			"harga_perlengkapan": gp.HargaPerlengkapan,
+			"no_hp":              gp.Customer.NoHP,
+			"email":              gp.Customer.Email,
+			"tempat_lahir":       gp.Customer.TempatLahir,
+			"tanggal_lahir":      tanggalLahir,
+			"jenis_kelamin":      gp.Customer.JenisKelamin,
+			"alamat_lengkap":     gp.Customer.AlamatLengkap,
+			"provinsi":           gp.Customer.Provinsi,
+			"kabupaten_kota":     gp.Customer.KabupatenKota,
+			"kecamatan":          gp.Customer.Kecamatan,
+			"kelurahan_desa":     gp.Customer.KelurahanDesa,
+			"kode_pos":           gp.Customer.KodePos,
 		})
 	}
 
