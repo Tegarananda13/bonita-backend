@@ -28,6 +28,7 @@ func main() {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins: []string{
 			"http://localhost:5173",
+			// "https://bonita-frontend-iota.vercel.app",
 			// "http://192.168.110.174:5173",
 		},
 		AllowMethods: []string{
