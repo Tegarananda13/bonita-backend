@@ -167,10 +167,7 @@ func AdminCreateCustomer(c *gin.Context) {
 		return
 	}
 
-	// ── 6. Generate nomor pendaftaran ─────────────────────────────────────────
-	nomorPendaftaran := "UMR-" + time.Now().Format("20060102150405")
-
-	// ── 7. Buat Invoice (dibuat saat pendaftaran, bukan saat bayar pertama) ───
+	// ── 6. Buat Invoice (dibuat saat pendaftaran, bukan saat bayar pertama) ───
 	nomorInvoice, _ := helpers.GenerateNomorInvoice(config.DB)
 	invoice := models.Invoice{
 		NomorInvoice:     nomorInvoice,
@@ -184,26 +181,27 @@ func AdminCreateCustomer(c *gin.Context) {
 		return
 	}
 
-	// ── 8. Buat Pendaftaran ───────────────────────────────────────────────────
+	// ── 7. Buat Pendaftaran ───────────────────────────────────────────────────
 	pendaftaran := models.Pendaftaran{
 		CustomerNIK:        customer.NIK, // FK ke customer.nik
 		PaketID:            paketID,
 		UserID:             &adminID, // otomatis di-assign ke admin yang login
 		NomorInvoice:       invoice.NomorInvoice,
-		NomorPendaftaran:   nomorPendaftaran,
 		DocumentStatus:     helpers.DocumentBelum,
 		Status:             helpers.StatusProses,
 		RegistrationSource: helpers.SourceAdmin,
 		RegisteredBy:       adminNama,
 		TanggalDaftar:      time.Now(),
+		BatasWaktuDP:       time.Now().Add(24 * time.Hour),
 	}
 
-	if err := config.DB.Create(&pendaftaran).Error; err != nil {
+	if err := helpers.CreatePendaftaranWithRetry(config.DB, &pendaftaran, helpers.MaxGenerateRetries); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Gagal menyimpan pendaftaran",
 		})
 		return
 	}
+	nomorPendaftaran := pendaftaran.NomorPendaftaran
 
 	// ── 9. Update kuota paket ─────────────────────────────────────────────────
 	if err := config.DB.

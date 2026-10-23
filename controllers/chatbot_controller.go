@@ -128,7 +128,7 @@ func Chatbot(c *gin.Context) {
 			chatbotResponse(c, req, "pengaduan",
 				"Baik, saya akan membantu membuat laporan pengaduan.\n\n"+
 					"Silakan masukkan **Nomor UMR** Anda terlebih dahulu.\n\n"+
-					"Contoh: **UMR-20260718123456**",
+					"Contoh: **UMR-20261022-A7K2**",
 				"ask_nomor", "")
 			return
 
@@ -144,7 +144,7 @@ func Chatbot(c *gin.Context) {
 
 			if err != nil {
 				chatbotResponse(c, req, "pengaduan",
-					"Nomor UMR tidak ditemukan. Silakan periksa kembali dan coba lagi dengan format: **UMR-YYYYMMDDHHMMSS**",
+					"Nomor UMR tidak ditemukan. Silakan periksa kembali dan coba lagi (contoh: **UMR-20261022-A7K2**).",
 					"ask_nomor", "")
 				return
 			}
@@ -269,7 +269,7 @@ func Chatbot(c *gin.Context) {
 
 	if detectIntentPengaduan(req.Pertanyaan) {
 		chatbotResponse(c, req, "pengaduan",
-			"Baik, saya akan membantu membuat laporan pengaduan.\n\nSilakan masukkan **Nomor UMR** Anda terlebih dahulu.\n\nContoh: **UMR-20260718123456**",
+			"Baik, saya akan membantu membuat laporan pengaduan.\n\nSilakan masukkan **Nomor UMR** Anda terlebih dahulu.\n\nContoh: **UMR-20261022-A7K2**",
 			"ask_nomor", "")
 		return
 	}
@@ -423,7 +423,7 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 		// Jika customer ingin membuat pengaduan
 		if detectIntentPengaduan(req.Pertanyaan) {
 			chatbotResponse(c, req, "pengaduan",
-				"Baik, saya akan membantu membuat laporan pengaduan.\n\nSilakan masukkan **Nomor UMR** Anda terlebih dahulu.\n\nContoh: **UMR-20260718123456**",
+				"Baik, saya akan membantu membuat laporan pengaduan.\n\nSilakan masukkan **Nomor UMR** Anda terlebih dahulu.\n\nContoh: **UMR-20261022-A7K2**",
 				"ask_nomor", "")
 			return
 		}
@@ -738,14 +738,12 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 		}
 
 		// Buat pendaftaran
-		nomor := "UMR-" + time.Now().Format("20060102150405") + "-" + rd.NIK[len(rd.NIK)-4:]
 		batasDP := time.Now().Add(24 * time.Hour)
 		pendaftaran := models.Pendaftaran{
 			CustomerNIK:        customer.NIK, // FK ke customer.nik
 			PaketID:            paketID,
 			UserID:             nil,
 			NomorInvoice:       invoice.NomorInvoice,
-			NomorPendaftaran:   nomor,
 			DocumentStatus:     helpers.DocumentBelum,
 			Status:             helpers.StatusProses,
 			RegistrationSource: helpers.SourceChatbot,
@@ -753,12 +751,13 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 			TanggalDaftar:      time.Now(),
 			BatasWaktuDP:       batasDP,
 		}
-		if tx.Create(&pendaftaran).Error != nil {
+		if err := helpers.CreatePendaftaranWithRetry(tx, &pendaftaran, helpers.MaxGenerateRetries); err != nil {
 			tx.Rollback()
 			chatbotResponseReg(c, req,
 				"Gagal menyimpan pendaftaran. Silakan coba lagi.", "error", nil)
 			return
 		}
+		nomor := pendaftaran.NomorPendaftaran
 
 		// Kuota sudah ditambah secara atomik oleh ReservasiKuotaPaket; commit semuanya
 		if tx.Commit().Error != nil {

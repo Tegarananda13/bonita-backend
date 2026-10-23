@@ -95,7 +95,7 @@ func BuildBusinessFlowContext() string {
 
 1. Customer memilih paket umroh di halaman Paket Umroh.
 2. Customer melakukan pendaftaran melalui sistem Bonita.
-3. Sistem membuat Nomor Pendaftaran dengan format UMR-XXXXX.
+3. Sistem membuat Nomor Pendaftaran dengan format UMR-YYYYMMDD-XXXX (contoh: UMR-20261022-A7K2).
 4. Customer melakukan verifikasi menggunakan kode OTP yang dikirim ke email.
 5. Customer melakukan pembayaran DP pertama minimal Rp5.000.000 dan mengunggah bukti transfer.
 6. Admin memverifikasi pembayaran.

@@ -2,7 +2,10 @@ package controllers
 
 import (
 	"fmt"
+	"math"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"bonita-backend/config"
@@ -16,7 +19,7 @@ import (
 // Mengembalikan seluruh laporan pengaduan dengan informasi customer & pendaftaran.
 func GetAllPengaduan(c *gin.Context) {
 
-	statusFilter := c.Query("status") // opsional: ?status=menunggu
+	statusFilter := strings.TrimSpace(c.Query("status")) // opsional: ?status=menunggu
 
 	var pengaduanList []models.Pengaduan
 
@@ -24,9 +27,10 @@ func GetAllPengaduan(c *gin.Context) {
 		Preload("Pendaftaran").
 		Preload("Pendaftaran.Customer").
 		Preload("Pendaftaran.Paket").
-		Order("created_at DESC")
+		Order("CASE WHEN LOWER(pengaduan.status) = 'menunggu' THEN 0 WHEN LOWER(pengaduan.status) = 'diproses' THEN 1 ELSE 2 END ASC").
+		Order("pengaduan.created_at DESC")
 
-	if statusFilter != "" {
+	if statusFilter != "" && strings.ToLower(statusFilter) != "semua" {
 		q = q.Where("pengaduan.status = ?", statusFilter)
 	}
 
@@ -38,28 +42,98 @@ func GetAllPengaduan(c *gin.Context) {
 	}
 
 	var result []gin.H
+	searchParam := strings.ToLower(strings.TrimSpace(c.Query("search")))
+
 	for _, p := range pengaduanList {
+		nomorP := p.Pendaftaran.NomorPendaftaran
+		namaCust := p.Pendaftaran.Customer.Nama
+		kategori := p.Kategori
+		judul := p.Judul
+
+		if searchParam != "" {
+			if !strings.Contains(strings.ToLower(nomorP), searchParam) &&
+				!strings.Contains(strings.ToLower(namaCust), searchParam) &&
+				!strings.Contains(strings.ToLower(kategori), searchParam) &&
+				!strings.Contains(strings.ToLower(judul), searchParam) {
+				continue
+			}
+		}
+
 		result = append(result, gin.H{
 			"id":                p.ID,
-			"nomor_pendaftaran": p.Pendaftaran.NomorPendaftaran,
-			"nama_customer":     p.Pendaftaran.Customer.Nama,
+			"nomor_pendaftaran": nomorP,
+			"nama_customer":     namaCust,
 			"no_hp":             p.Pendaftaran.Customer.NoHP,
 			"paket":             p.Pendaftaran.Paket.NamaPaket,
-			"judul":             p.Judul,
-			"kategori":          p.Kategori,
+			"judul":             judul,
+			"kategori":          kategori,
 			"status":            p.Status,
 			"created_at":        p.CreatedAt,
 		})
 	}
 
-	// Hitung jumlah yang masih "menunggu" untuk badge sidebar
-	var countMenunggu int64
-	config.DB.Model(&models.Pengaduan{}).Where("status = ?", helpers.PengaduanMenunggu).Count(&countMenunggu)
+	// Hitung jumlah berdasarkan status untuk filter stats card (seperti di ulasan jamaah)
+	var countTotal, countMenunggu, countDiproses, countSelesai int64
+	config.DB.Model(&models.Pengaduan{}).Count(&countTotal)
+	config.DB.Model(&models.Pengaduan{}).Where("LOWER(status) = ?", strings.ToLower(helpers.PengaduanMenunggu)).Count(&countMenunggu)
+	config.DB.Model(&models.Pengaduan{}).Where("LOWER(status) = ?", strings.ToLower(helpers.PengaduanDiproses)).Count(&countDiproses)
+	config.DB.Model(&models.Pengaduan{}).Where("LOWER(status) = ?", strings.ToLower(helpers.PengaduanSelesai)).Count(&countSelesai)
+
+	total := len(result)
+	pageStr := strings.TrimSpace(c.Query("page"))
+	limitStr := strings.TrimSpace(c.Query("limit"))
+
+	var paged []gin.H
+	var page, limit, totalPages int
+
+	if pageStr != "" || limitStr != "" {
+		page, _ = strconv.Atoi(pageStr)
+		if page < 1 {
+			page = 1
+		}
+		limit, _ = strconv.Atoi(limitStr)
+		if limit < 1 {
+			limit = 10
+		}
+
+		totalPages = int(math.Ceil(float64(total) / float64(limit)))
+		if totalPages < 1 && total > 0 {
+			totalPages = 1
+		}
+
+		start := (page - 1) * limit
+		if start < total {
+			end := start + limit
+			if end > total {
+				end = total
+			}
+			paged = result[start:end]
+		} else {
+			paged = []gin.H{}
+		}
+	} else {
+		page = 1
+		limit = total
+		totalPages = 1
+		paged = result
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"total":          len(result),
+		"total":          total,
 		"count_menunggu": countMenunggu,
-		"data":           result,
+		"data":           paged,
+		"stats": gin.H{
+			"total":    countTotal,
+			"menunggu": countMenunggu,
+			"diproses": countDiproses,
+			"selesai":  countSelesai,
+		},
+		"meta": gin.H{
+			"total":       total,
+			"page":        page,
+			"limit":       limit,
+			"total_pages": totalPages,
+		},
 	})
 }
 

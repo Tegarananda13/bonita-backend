@@ -4,7 +4,9 @@ import (
 	"bonita-backend/config"
 	"bonita-backend/helpers"
 	"bonita-backend/models"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -147,6 +149,8 @@ func GetPendingPembayaran(c *gin.Context) {
 	}
 
 	var result []gin.H
+	searchParam := strings.ToLower(strings.TrimSpace(c.Query("search")))
+
 	for _, p := range pembayaran {
 		// Ambil pendaftaran pertama dari invoice (untuk backward compat tampilkan info jamaah)
 		nomorPendaftaran := ""
@@ -156,9 +160,19 @@ func GetPendingPembayaran(c *gin.Context) {
 			namaCustomer = p.Invoice.Pendaftaran[0].Customer.Nama
 		}
 
+		if searchParam != "" {
+			nomorP := strings.ToLower(nomorPendaftaran)
+			namaC := strings.ToLower(namaCustomer)
+			inv := strings.ToLower(p.NomorInvoice)
+			if !strings.Contains(nomorP, searchParam) && !strings.Contains(namaC, searchParam) && !strings.Contains(inv, searchParam) {
+				continue
+			}
+		}
+
 		result = append(result, gin.H{
 			"id":                 p.ID,
 			"nomor_pendaftaran":  nomorPendaftaran,
+			"nomor_invoice":      p.NomorInvoice,
 			"nama_customer":      namaCustomer,
 			"jumlah":             p.Jumlah,
 			"status":             p.Status,
@@ -171,9 +185,54 @@ func GetPendingPembayaran(c *gin.Context) {
 		Where("status = ?", helpers.PaymentVerificationPending).
 		Count(&countMenunggu)
 
+	total := len(result)
+	pageStr := strings.TrimSpace(c.Query("page"))
+	limitStr := strings.TrimSpace(c.Query("limit"))
+
+	var paged []gin.H
+	var page, limit, totalPages int
+
+	if pageStr != "" || limitStr != "" {
+		page, _ = strconv.Atoi(pageStr)
+		if page < 1 {
+			page = 1
+		}
+		limit, _ = strconv.Atoi(limitStr)
+		if limit < 1 {
+			limit = 10
+		}
+
+		totalPages = int(math.Ceil(float64(total) / float64(limit)))
+		if totalPages < 1 && total > 0 {
+			totalPages = 1
+		}
+
+		start := (page - 1) * limit
+		if start < total {
+			end := start + limit
+			if end > total {
+				end = total
+			}
+			paged = result[start:end]
+		} else {
+			paged = []gin.H{}
+		}
+	} else {
+		page = 1
+		limit = total
+		totalPages = 1
+		paged = result
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"total":          countMenunggu,
+		"total":          total,
 		"count_menunggu": countMenunggu,
-		"data":           result,
+		"data":           paged,
+		"meta": gin.H{
+			"total":       total,
+			"page":        page,
+			"limit":       limit,
+			"total_pages": totalPages,
+		},
 	})
 }

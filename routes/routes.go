@@ -18,7 +18,7 @@ func SetupRoutes(r *gin.Engine) {
 	)
 
 	// ======================
-	// PUBLIC (CUSTOMER)
+	// PUBLIC (CUSTOMER) / (CALON JAMAAH / JAMAAH)
 	// ======================
 	r.GET(
 		"/paket",
@@ -48,6 +48,11 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST(
 		"/chatbot",
 		controllers.Chatbot,
+	)
+
+	r.GET(
+		"/ulasan",
+		controllers.GetPublicUlasan,
 	)
 
 	// hanya lihat status
@@ -100,6 +105,16 @@ func SetupRoutes(r *gin.Engine) {
 		customer.GET(
 			"/status",
 			controllers.GetCustomerPendaftaranStatus,
+		)
+
+		customer.POST(
+			"/ulasan",
+			controllers.CreateCustomerUlasan,
+		)
+
+		customer.GET(
+			"/ulasan",
+			controllers.GetCustomerMyUlasan,
 		)
 	}
 	// ======================
@@ -325,6 +340,13 @@ func SetupRoutes(r *gin.Engine) {
 
 		// ── Ajukan Verifikasi ke Manager setelah perbaikan ──
 		admin.POST("/pendaftaran/:nomor/ajukan-verifikasi", controllers.AdminAjukanVerifikasi)
+
+		// ── Ulasan Jamaah ──
+		admin.GET("/ulasan", controllers.AdminGetAllUlasan)
+		admin.GET("/ulasan/:id", controllers.AdminGetDetailUlasan)
+		admin.PUT("/ulasan/:id/status", controllers.AdminUpdateStatusUlasan)
+		admin.PATCH("/ulasan/:id/status", controllers.AdminUpdateStatusUlasan)
+		admin.DELETE("/ulasan/:id", controllers.AdminDeleteUlasan)
 	}
 
 	// ======================

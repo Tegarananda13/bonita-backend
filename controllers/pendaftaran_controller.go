@@ -238,8 +238,6 @@ func CreatePendaftaran(c *gin.Context) {
 			return
 		}
 
-		nomor := "UMR-" + time.Now().Format("20060102150405") + "-" + j.NIK[len(j.NIK)-4:]
-
 		// Snapshot harga perlengkapan jika jamaah memilih
 		var hargaPerl float64
 		if j.AmbilPerlengkapan {
@@ -251,7 +249,6 @@ func CreatePendaftaran(c *gin.Context) {
 			PaketID:            paketID,
 			UserID:             nil,
 			NomorInvoice:       invoice.NomorInvoice,
-			NomorPendaftaran:   nomor,
 			DocumentStatus:     helpers.DocumentBelum,
 			Status:             helpers.StatusProses,
 			RegistrationSource: regSource,
@@ -261,13 +258,13 @@ func CreatePendaftaran(c *gin.Context) {
 			TanggalDaftar:      time.Now(),
 			BatasWaktuDP:       time.Now().Add(24 * time.Hour),
 		}
-		if err := config.DB.Create(&pendaftaran).Error; err != nil {
+		if err := helpers.CreatePendaftaranWithRetry(config.DB, &pendaftaran, helpers.MaxGenerateRetries); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan pendaftaran: " + j.Nama})
 			return
 		}
 
 		results = append(results, pendaftaranResult{
-			NomorPendaftaran: nomor,
+			NomorPendaftaran: pendaftaran.NomorPendaftaran,
 			Nama:             j.Nama,
 		})
 	}

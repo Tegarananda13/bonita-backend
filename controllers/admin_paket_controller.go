@@ -2,8 +2,10 @@ package controllers
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"bonita-backend/config"
@@ -201,9 +203,16 @@ func GetAllPaket(c *gin.Context) {
 
 	var paket []models.PaketUmroh
 
-	if err := config.DB.
+	dbQuery := config.DB.
 		Preload("GambarPaket", func(db *gorm.DB) *gorm.DB { return db.Order("urutan ASC") }).
-		Preload("Fasilitas").
+		Preload("Fasilitas")
+
+	search := strings.TrimSpace(c.Query("search"))
+	if search != "" {
+		dbQuery = dbQuery.Where("LOWER(nama_paket) LIKE LOWER(?)", "%"+search+"%")
+	}
+
+	if err := dbQuery.
 		Order("tanggal_berangkat ASC").
 		Find(&paket).Error; err != nil {
 
@@ -217,9 +226,50 @@ func GetAllPaket(c *gin.Context) {
 	now := time.Now()
 	helpers.SortPaketByPerjalanan(paket, now)
 
-	// Kumpulkan ID paket
+	total := len(paket)
+
+	// Check pagination parameters
+	pageStr := strings.TrimSpace(c.Query("page"))
+	limitStr := strings.TrimSpace(c.Query("limit"))
+
+	var pagedPaket []models.PaketUmroh
+	var page, limit, totalPages int
+
+	if pageStr != "" || limitStr != "" {
+		page, _ = strconv.Atoi(pageStr)
+		if page < 1 {
+			page = 1
+		}
+		limit, _ = strconv.Atoi(limitStr)
+		if limit < 1 {
+			limit = 10
+		}
+
+		totalPages = int(math.Ceil(float64(total) / float64(limit)))
+		if totalPages < 1 && total > 0 {
+			totalPages = 1
+		}
+
+		start := (page - 1) * limit
+		if start < total {
+			end := start + limit
+			if end > total {
+				end = total
+			}
+			pagedPaket = paket[start:end]
+		} else {
+			pagedPaket = []models.PaketUmroh{}
+		}
+	} else {
+		page = 1
+		limit = total
+		totalPages = 1
+		pagedPaket = paket
+	}
+
+	// Kumpulkan ID paket dari pagedPaket
 	var paketIDs []interface{}
-	for _, p := range paket {
+	for _, p := range pagedPaket {
 		paketIDs = append(paketIDs, p.ID)
 	}
 
@@ -250,18 +300,18 @@ func GetAllPaket(c *gin.Context) {
 		}
 	}
 
-	for i := range paket {
-		fotoURL := fotoUtamaMap[paket[i].ID.String()]
+	for i := range pagedPaket {
+		fotoURL := fotoUtamaMap[pagedPaket[i].ID.String()]
 		if fotoURL == "" {
-			fotoURL = paket[i].FotoPaket // fallback 2: field lama FotoPaket
+			fotoURL = pagedPaket[i].FotoPaket // fallback 2: field lama FotoPaket
 		}
-		paket[i].FotoPaket = fotoURL
+		pagedPaket[i].FotoPaket = fotoURL
 
 		// Jika gambar_paket masih kosong tapi FotoPaket ada, tambahkan sebagai fallback array
-		if len(paket[i].GambarPaket) == 0 && fotoURL != "" {
-			paket[i].GambarPaket = []models.FotoPaket{
+		if len(pagedPaket[i].GambarPaket) == 0 && fotoURL != "" {
+			pagedPaket[i].GambarPaket = []models.FotoPaket{
 				{
-					PaketID:  paket[i].ID,
+					PaketID:  pagedPaket[i].ID,
 					FilePath: fotoURL,
 					Urutan:   1,
 					IsUtama:  true,
@@ -275,16 +325,34 @@ func GetAllPaket(c *gin.Context) {
 		models.PaketUmroh
 		StatusPerjalanan string `json:"status_perjalanan"`
 	}
-	items := make([]paketAdminItem, 0, len(paket))
-	for _, p := range paket {
+	items := make([]paketAdminItem, 0, len(pagedPaket))
+	for _, p := range pagedPaket {
 		items = append(items, paketAdminItem{
 			PaketUmroh:       p,
 			StatusPerjalanan: helpers.PaketStatusPerjalanan(p, now),
 		})
 	}
 
+	var totalKuota, totalTerisi int
+	for _, p := range paket {
+		totalKuota += p.KuotaMax
+		totalTerisi += p.KuotaTerpakai
+	}
+
 	c.JSON(http.StatusOK, gin.H{
+		"data":  items,
 		"paket": items,
+		"stats": gin.H{
+			"total_paket":  total,
+			"total_kuota":  totalKuota,
+			"total_terisi": totalTerisi,
+		},
+		"meta": gin.H{
+			"total":       total,
+			"page":        page,
+			"limit":       limit,
+			"total_pages": totalPages,
+		},
 	})
 }
 

@@ -2,8 +2,10 @@ package controllers
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -151,16 +153,76 @@ func GetAllPendaftaran(c *gin.Context) {
 		}
 	}
 
+	statusParam := strings.TrimSpace(c.Query("status"))
+	if statusParam != "" && strings.ToLower(statusParam) != "semua" {
+		query = query.Where("LOWER(status) = ?", strings.ToLower(statusParam))
+	}
+
 	var pendaftaran []models.Pendaftaran
 	if err := query.Find(&pendaftaran).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data pendaftaran"})
 		return
 	}
 
+	searchParam := strings.TrimSpace(c.Query("search"))
+	if searchParam != "" {
+		s := strings.ToLower(searchParam)
+		var filtered []models.Pendaftaran
+		for _, p := range pendaftaran {
+			namaCust := strings.ToLower(p.Customer.Nama)
+			nomorP := strings.ToLower(p.NomorPendaftaran)
+			namaPaket := strings.ToLower(p.Paket.NamaPaket)
+			if strings.Contains(namaCust, s) || strings.Contains(nomorP, s) || strings.Contains(namaPaket, s) {
+				filtered = append(filtered, p)
+			}
+		}
+		pendaftaran = filtered
+	}
+
 	sortPendaftaran(pendaftaran)
 
+	total := len(pendaftaran)
+
+	pageStr := strings.TrimSpace(c.Query("page"))
+	limitStr := strings.TrimSpace(c.Query("limit"))
+
+	var paged []models.Pendaftaran
+	var page, limit, totalPages int
+
+	if pageStr != "" || limitStr != "" {
+		page, _ = strconv.Atoi(pageStr)
+		if page < 1 {
+			page = 1
+		}
+		limit, _ = strconv.Atoi(limitStr)
+		if limit < 1 {
+			limit = 10
+		}
+
+		totalPages = int(math.Ceil(float64(total) / float64(limit)))
+		if totalPages < 1 && total > 0 {
+			totalPages = 1
+		}
+
+		start := (page - 1) * limit
+		if start < total {
+			end := start + limit
+			if end > total {
+				end = total
+			}
+			paged = pendaftaran[start:end]
+		} else {
+			paged = []models.Pendaftaran{}
+		}
+	} else {
+		page = 1
+		limit = total
+		totalPages = 1
+		paged = pendaftaran
+	}
+
 	var result []gin.H
-	for _, p := range pendaftaran {
+	for _, p := range paged {
 		nomorInvoice := p.NomorInvoice
 		totalTagihan := p.Paket.Harga
 		totalPembayaran := 0.0
@@ -214,8 +276,14 @@ func GetAllPendaftaran(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"total": len(result),
+		"total": total,
 		"data":  result,
+		"meta": gin.H{
+			"total":       total,
+			"page":        page,
+			"limit":       limit,
+			"total_pages": totalPages,
+		},
 	})
 }
 

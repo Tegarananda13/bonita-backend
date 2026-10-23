@@ -44,6 +44,7 @@ func Migrate() {
 	DB.Exec(`ALTER TABLE pengaduan DROP CONSTRAINT IF EXISTS fk_pengaduan_nomor_pendaftaran`)
 	DB.Exec(`ALTER TABLE customer_session DROP CONSTRAINT IF EXISTS fk_customer_session_nomor_pendaftaran`)
 	DB.Exec(`ALTER TABLE verifikasi_otp DROP CONSTRAINT IF EXISTS fk_verifikasi_otp_nomor_pendaftaran`)
+	DB.Exec(`ALTER TABLE IF EXISTS ulasan DROP CONSTRAINT IF EXISTS fk_ulasan_pendaftaran_id`)
 	DB.Exec(`ALTER TABLE pendaftaran DROP CONSTRAINT IF EXISTS pendaftaran_pkey`)
 	DB.Exec(`ALTER TABLE pendaftaran DROP CONSTRAINT IF EXISTS uni_pendaftaran_nomor_pendaftaran`)
 
@@ -71,6 +72,8 @@ func Migrate() {
 		&models.Pengaduan{},
 		&models.FotoPaket{},
 		&models.FotoFasilitas{},
+		&models.Ulasan{},
+		&models.FotoUlasan{},
 	)
 
 	// Step 1b: Set ulang PK eksplisit (idempoten)
@@ -93,6 +96,10 @@ func Migrate() {
 	DB.Exec(`ALTER TABLE customer_session ADD CONSTRAINT fk_customer_session_nomor_pendaftaran FOREIGN KEY (nomor_pendaftaran) REFERENCES pendaftaran(nomor_pendaftaran) ON UPDATE CASCADE ON DELETE RESTRICT`)
 	DB.Exec(`ALTER TABLE verifikasi_otp DROP CONSTRAINT IF EXISTS fk_verifikasi_otp_nomor_pendaftaran`)
 	DB.Exec(`ALTER TABLE verifikasi_otp ADD CONSTRAINT fk_verifikasi_otp_nomor_pendaftaran FOREIGN KEY (nomor_pendaftaran) REFERENCES pendaftaran(nomor_pendaftaran) ON UPDATE CASCADE ON DELETE RESTRICT`)
+	DB.Exec(`ALTER TABLE ulasan DROP CONSTRAINT IF EXISTS fk_ulasan_pendaftaran_id`)
+	DB.Exec(`ALTER TABLE ulasan ADD CONSTRAINT fk_ulasan_pendaftaran_id FOREIGN KEY (pendaftaran_id) REFERENCES pendaftaran(nomor_pendaftaran) ON UPDATE CASCADE ON DELETE RESTRICT`)
+	DB.Exec(`ALTER TABLE foto_ulasan DROP CONSTRAINT IF EXISTS fk_foto_ulasan_ulasan_id`)
+	DB.Exec(`ALTER TABLE foto_ulasan ADD CONSTRAINT fk_foto_ulasan_ulasan_id FOREIGN KEY (ulasan_id) REFERENCES ulasan(id) ON UPDATE CASCADE ON DELETE CASCADE`)
 
 	// Step 1d: Restore FK ke invoice.nomor_invoice (idempoten)
 	DB.Exec(`ALTER TABLE pendaftaran DROP CONSTRAINT IF EXISTS fk_pendaftaran_nomor_invoice`)
