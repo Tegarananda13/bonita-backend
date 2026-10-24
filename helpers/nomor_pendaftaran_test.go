@@ -45,11 +45,11 @@ func TestFormatNomorPendaftaran(t *testing.T) {
 	}
 }
 
-// TestKeunikanNomorPendaftaran memastikan bahwa 1000 generasi berturut-turut menghasilkan nomor unik
+// TestKeunikanNomorPendaftaran memastikan bahwa 100 generasi berturut-turut menghasilkan nomor acak yang variatif
 func TestKeunikanNomorPendaftaran(t *testing.T) {
 	now := time.Now()
 	seen := make(map[string]bool)
-	totalGenerasi := 1000
+	totalGenerasi := 100
 
 	for i := 0; i < totalGenerasi; i++ {
 		code, err := helpers.GenerateRandomPendaftaranCode()

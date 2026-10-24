@@ -1,7 +1,10 @@
 package routes
 
 import (
-	"bonita-backend/controllers"
+	"bonita-backend/controllers/admin"
+	"bonita-backend/controllers/administration_manager"
+	"bonita-backend/controllers/customer"
+	"bonita-backend/controllers/shared"
 	"bonita-backend/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -10,380 +13,378 @@ import (
 func SetupRoutes(r *gin.Engine) {
 
 	// ======================
-	// LOGIN
+	// LOGIN (SHARED)
 	// ======================
 	r.POST(
 		"/login",
-		controllers.Login,
+		shared.Login,
 	)
 
 	// ======================
-	// PUBLIC (CUSTOMER) / (CALON JAMAAH / JAMAAH)
+	// PUBLIC / SHARED
 	// ======================
 	r.GET(
 		"/paket",
-		controllers.GetPaket,
+		shared.GetPaket,
 	)
 
 	r.GET(
 		"/paket/:id",
-		controllers.GetDetailPaket,
+		shared.GetDetailPaket,
 	)
 
 	r.POST(
 		"/pendaftaran",
-		controllers.CreatePendaftaran,
+		customer.CreatePendaftaran,
 	)
-	// r.GET("/pendaftaran/:nomor", controllers.GetPendaftaranByNomor)
 
 	r.POST(
 		"/otp/request",
-		controllers.RequestOTP,
+		shared.RequestOTP,
 	)
 	r.POST(
 		"/otp/verify",
-		controllers.VerifyOTP,
+		shared.VerifyOTP,
 	)
 
 	r.POST(
 		"/chatbot",
-		controllers.Chatbot,
+		shared.Chatbot,
 	)
 
 	r.GET(
 		"/ulasan",
-		controllers.GetPublicUlasan,
+		shared.GetPublicUlasan,
 	)
-
-	// hanya lihat status
 
 	// ======================
 	// CUSTOMER SESSION (OTP)
 	// ======================
 
-	customer := r.Group("/customer")
-	customer.Use(
+	custGroup := r.Group("/customer")
+	custGroup.Use(
 		middleware.CustomerMiddleware(),
 	)
 
 	{
-		customer.POST(
+		custGroup.POST(
 			"/pembayaran",
-			controllers.CreatePembayaran,
+			customer.CreatePembayaran,
 		)
 
-		customer.POST(
+		custGroup.POST(
 			"/pembayaran/:id/upload",
-			controllers.UploadBuktiPembayaran,
+			customer.UploadBuktiPembayaran,
 		)
 
-		customer.GET(
+		custGroup.GET(
 			"/pembayaran",
-			controllers.GetPembayaran,
+			customer.GetPembayaran,
 		)
 
-		customer.GET(
+		custGroup.GET(
 			"/dashboard",
-			controllers.GetCustomerDashboard,
+			customer.GetCustomerDashboard,
 		)
 
-		customer.POST(
+		custGroup.POST(
 			"/dokumen/upload",
-			controllers.UploadDokumen,
+			customer.UploadDokumen,
 		)
 
-		customer.GET(
+		custGroup.GET(
 			"/dokumen",
-			controllers.GetDokumen,
+			customer.GetDokumen,
 		)
 
-		customer.GET(
+		custGroup.GET(
 			"/invoice",
-			controllers.GetInvoice,
+			customer.GetInvoice,
 		)
 
-		customer.GET(
+		custGroup.GET(
 			"/status",
-			controllers.GetCustomerPendaftaranStatus,
+			customer.GetCustomerPendaftaranStatus,
 		)
 
-		customer.POST(
+		custGroup.POST(
 			"/ulasan",
-			controllers.CreateCustomerUlasan,
+			customer.CreateCustomerUlasan,
 		)
 
-		customer.GET(
+		custGroup.GET(
 			"/ulasan",
-			controllers.GetCustomerMyUlasan,
+			customer.GetCustomerMyUlasan,
 		)
 	}
+
 	// ======================
 	// ADMIN & ADMINISTRATION MANAGER
 	// ======================
 
-	admin := r.Group("/admin")
-	admin.Use(
+	admGroup := r.Group("/admin")
+	admGroup.Use(
 		middleware.AuthMiddleware(),
 		middleware.RoleMiddleware("admin", "owner", "manager", "administration_manager"),
 	)
 
 	{
-		admin.GET(
+		admGroup.GET(
 			"/me",
-			controllers.GetMe,
+			shared.GetMe,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/dashboard",
-			controllers.GetDashboard,
+			admin.GetDashboard,
 		)
 
 		// ── Badges notifikasi admin ──
-		admin.GET(
+		admGroup.GET(
 			"/badges",
-			controllers.GetAdminBadges,
+			admin.GetAdminBadges,
 		)
-		admin.GET(
+		admGroup.GET(
 			"/notifikasi/count",
-			controllers.GetAdminBadges,
+			admin.GetAdminBadges,
 		)
-		admin.GET(
+		admGroup.GET(
 			"/dokumen/count",
-			controllers.GetDokumenPendingCount,
+			admin.GetDokumenPendingCount,
 		)
-		admin.GET(
+		admGroup.GET(
 			"/pembayaran/count",
-			controllers.GetPembayaranPendingCount,
+			admin.GetPembayaranPendingCount,
 		)
 
 		// ── Customer (admin mendaftarkan jamaah) ──
-		admin.GET(
+		admGroup.GET(
 			"/customer",
-			controllers.AdminGetAllCustomer,
+			admin.AdminGetAllCustomer,
 		)
 
-		admin.POST(
+		admGroup.POST(
 			"/customer",
-			controllers.AdminCreateCustomer,
+			admin.AdminCreateCustomer,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/pendaftaran",
-			controllers.GetAllPendaftaran,
+			admin.GetAllPendaftaran,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/pendaftaran/saya",
-			controllers.GetPendaftaranSaya,
+			admin.GetPendaftaranSaya,
 		)
 
-		admin.PUT(
+		admGroup.PUT(
 			"/pendaftaran/:nomor/assign",
-			controllers.AssignPendaftaran,
+			admin.AssignPendaftaran,
 		)
 
-		admin.PUT(
+		admGroup.PUT(
 			"/pendaftaran/:nomor/selesai",
-			controllers.TandaiSelesai,
+			admin.TandaiSelesai,
 		)
 
-		admin.POST(
+		admGroup.POST(
 			"/pendaftaran/process-expiry",
-			controllers.ManualProcessExpiry,
+			admin.ManualProcessExpiry,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/pendaftaran/:nomor",
-			controllers.GetDetailPendaftaran,
+			admin.GetDetailPendaftaran,
 		)
 
-		admin.POST(
+		admGroup.POST(
 			"/pendaftaran/:nomor/batal",
-			controllers.AdminBatalkanPendaftaran,
+			admin.AdminBatalkanPendaftaran,
 		)
 
-		admin.PUT(
+		admGroup.PUT(
 			"/pendaftaran/:nomor/batal",
-			controllers.AdminBatalkanPendaftaran,
+			admin.AdminBatalkanPendaftaran,
 		)
 
-		admin.PUT(
+		admGroup.PUT(
 			"/pendaftaran/:nomor/perlengkapan",
-			controllers.AdminUpdatePerlengkapan,
+			admin.AdminUpdatePerlengkapan,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/perlengkapan/master",
-			controllers.GetPerlengkapanMaster,
+			admin.GetPerlengkapanMaster,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/pendaftaran/:nomor/status",
-			controllers.GetPendaftaranStatus,
+			admin.GetPendaftaranStatus,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/pembayaran/pending",
-			controllers.GetPendingPembayaran,
+			admin.GetPendingPembayaran,
 		)
 
-		admin.PUT(
+		admGroup.PUT(
 			"/pembayaran/:id/verifikasi",
-			controllers.VerifikasiPembayaran,
+			admin.VerifikasiPembayaran,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/pembayaran/:id",
-			controllers.GetDetailPembayaran,
+			admin.GetDetailPembayaran,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/dokumen/pending",
-			controllers.GetPendingDokumen,
+			admin.GetPendingDokumen,
 		)
 
-		admin.PUT(
+		admGroup.PUT(
 			"/dokumen/:id/verifikasi",
-			controllers.VerifikasiDokumen,
+			admin.VerifikasiDokumen,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/dokumen/:id",
-			controllers.GetDetailDokumen,
+			admin.GetDetailDokumen,
 		)
 
-		admin.POST(
+		admGroup.POST(
 			"/paket",
-			controllers.CreatePaket,
+			admin.CreatePaket,
 		)
 
-		admin.POST(
+		admGroup.POST(
 			"/paket/:id/fasilitas",
-			controllers.CreateFasilitas,
+			admin.CreateFasilitas,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/paket/:id/fasilitas",
-			controllers.GetFasilitasByPaket,
+			admin.GetFasilitasByPaket,
 		)
 
-		admin.PUT(
+		admGroup.PUT(
 			"/fasilitas/:id",
-			controllers.UpdateFasilitas,
+			admin.UpdateFasilitas,
 		)
 
-		admin.DELETE(
+		admGroup.DELETE(
 			"/fasilitas/:id",
-			controllers.DeleteFasilitas,
+			admin.DeleteFasilitas,
 		)
 
-		admin.PUT(
+		admGroup.PUT(
 			"/paket/:id",
-			controllers.UpdatePaket,
+			admin.UpdatePaket,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/paket",
-			controllers.GetAllPaket,
+			admin.GetAllPaket,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/paket/:id",
-			controllers.GetPaketByID,
+			admin.GetPaketByID,
 		)
 
-		admin.GET(
+		admGroup.GET(
 			"/paket/:id/detail",
-			controllers.GetDetailPaketAdmin,
+			admin.GetDetailPaketAdmin,
 		)
 
-		admin.DELETE(
+		admGroup.DELETE(
 			"/paket/:id",
-			controllers.DeletePaket,
+			admin.DeletePaket,
 		)
 
-		admin.PATCH(
+		admGroup.PATCH(
 			"/paket/:id/status",
-			controllers.ToggleStatusPaket,
+			admin.ToggleStatusPaket,
 		)
 
-		admin.PATCH(
+		admGroup.PATCH(
 			"/paket/:id/finish",
-			controllers.FinishPaket,
+			admin.FinishPaket,
 		)
 
 		// ── Foto Paket ──
-		admin.POST("/paket/:id/foto", controllers.UploadFotoPaket)
-		admin.GET("/paket/:id/foto", controllers.GetFotoPaket)
-		admin.DELETE("/foto-paket/:id", controllers.DeleteFotoPaket)
-		admin.PATCH("/foto-paket/:id/utama", controllers.SetFotoUtama)
+		admGroup.POST("/paket/:id/foto", admin.UploadFotoPaket)
+		admGroup.GET("/paket/:id/foto", admin.GetFotoPaket)
+		admGroup.DELETE("/foto-paket/:id", admin.DeleteFotoPaket)
+		admGroup.PATCH("/foto-paket/:id/utama", admin.SetFotoUtama)
 
 		// ── Foto Fasilitas ──
-		admin.POST("/fasilitas/:id/foto", controllers.UploadFotoFasilitas)
-		admin.GET("/fasilitas/:id/foto", controllers.GetFotoFasilitas)
-		admin.DELETE("/foto-fasilitas/:id", controllers.DeleteFotoFasilitas)
+		admGroup.POST("/fasilitas/:id/foto", admin.UploadFotoFasilitas)
+		admGroup.GET("/fasilitas/:id/foto", admin.GetFotoFasilitas)
+		admGroup.DELETE("/foto-fasilitas/:id", admin.DeleteFotoFasilitas)
 
 		// ── Pengaduan ──
-		admin.GET("/pengaduan", controllers.GetAllPengaduan)
-		admin.GET("/pengaduan/:id", controllers.GetDetailPengaduan)
-		admin.PATCH("/pengaduan/:id/status", controllers.UpdateStatusPengaduan)
-		admin.GET("/invoice", controllers.GetInvoiceAdmin)
+		admGroup.GET("/pengaduan", admin.GetAllPengaduan)
+		admGroup.GET("/pengaduan/:id", admin.GetDetailPengaduan)
+		admGroup.PATCH("/pengaduan/:id/status", admin.UpdateStatusPengaduan)
+		admGroup.GET("/invoice", admin.GetInvoiceAdmin)
 
 		// ── Admin input pembayaran & dokumen dari halaman detail ──
-		admin.POST("/pendaftaran/:nomor/pembayaran", controllers.AdminCreatePembayaran)
-		admin.PUT("/pembayaran/:id/admin", controllers.AdminUpdatePembayaran)
-		admin.DELETE("/pembayaran/:id/admin", controllers.AdminDeletePembayaran)
+		admGroup.POST("/pendaftaran/:nomor/pembayaran", admin.AdminCreatePembayaran)
+		admGroup.PUT("/pembayaran/:id/admin", admin.AdminUpdatePembayaran)
+		admGroup.DELETE("/pembayaran/:id/admin", admin.AdminDeletePembayaran)
 
-		admin.POST("/pendaftaran/:nomor/dokumen", controllers.AdminUploadDokumen)
-		admin.PUT("/dokumen/:id/admin", controllers.AdminUpdateDokumen)
-		admin.DELETE("/dokumen/:id/admin", controllers.AdminDeleteDokumen)
+		admGroup.POST("/pendaftaran/:nomor/dokumen", admin.AdminUploadDokumen)
+		admGroup.PUT("/dokumen/:id/admin", admin.AdminUpdateDokumen)
+		admGroup.DELETE("/dokumen/:id/admin", admin.AdminDeleteDokumen)
 
 		// ── Ajukan Verifikasi ke Manager setelah perbaikan ──
-		admin.POST("/pendaftaran/:nomor/ajukan-verifikasi", controllers.AdminAjukanVerifikasi)
+		admGroup.POST("/pendaftaran/:nomor/ajukan-verifikasi", admin.AdminAjukanVerifikasi)
 
 		// ── Ulasan Jamaah ──
-		admin.GET("/ulasan", controllers.AdminGetAllUlasan)
-		admin.GET("/ulasan/:id", controllers.AdminGetDetailUlasan)
-		admin.PUT("/ulasan/:id/status", controllers.AdminUpdateStatusUlasan)
-		admin.PATCH("/ulasan/:id/status", controllers.AdminUpdateStatusUlasan)
-		admin.DELETE("/ulasan/:id", controllers.AdminDeleteUlasan)
+		admGroup.GET("/ulasan", admin.AdminGetAllUlasan)
+		admGroup.GET("/ulasan/:id", admin.AdminGetDetailUlasan)
+		admGroup.PUT("/ulasan/:id/status", admin.AdminUpdateStatusUlasan)
+		admGroup.PATCH("/ulasan/:id/status", admin.AdminUpdateStatusUlasan)
+		admGroup.DELETE("/ulasan/:id", admin.AdminDeleteUlasan)
 	}
 
 	// ======================
 	// ADMINISTRATION MANAGER
 	// ======================
 
-	manager := r.Group("/manager")
-	manager.Use(
+	mgrGroup := r.Group("/manager")
+	mgrGroup.Use(
 		middleware.AuthMiddleware(),
 		middleware.RoleMiddleware("owner", "manager", "administration_manager"),
 	)
 	{
 		// Manajemen Akun Admin
-		manager.POST("/admin", controllers.CreateAdmin)
-		manager.GET("/admin", controllers.GetAdminList)
-		manager.GET("/admin/:id", controllers.GetAdminDetail)
-		manager.GET("/admin/:id/jamaah", controllers.GetAdminJamaah)
-		manager.PUT("/admin/:id", controllers.UpdateAdmin)
-		manager.PATCH("/admin/:id/deactivate", controllers.DeactivateAdmin)
-		manager.PATCH("/admin/:id/reactivate", controllers.ReactivateAdmin)
-		manager.DELETE("/admin/:id", controllers.DeleteAdmin)
+		mgrGroup.POST("/admin", administration_manager.CreateAdmin)
+		mgrGroup.GET("/admin", administration_manager.GetAdminList)
+		mgrGroup.GET("/admin/:id", administration_manager.GetAdminDetail)
+		mgrGroup.GET("/admin/:id/jamaah", administration_manager.GetAdminJamaah)
+		mgrGroup.PUT("/admin/:id", administration_manager.UpdateAdmin)
+		mgrGroup.PATCH("/admin/:id/deactivate", administration_manager.DeactivateAdmin)
+		mgrGroup.PATCH("/admin/:id/reactivate", administration_manager.ReactivateAdmin)
+		mgrGroup.DELETE("/admin/:id", administration_manager.DeleteAdmin)
 
 		// Laporan & Rekapitulasi
-		manager.GET("/laporan", controllers.GetLaporan)
+		mgrGroup.GET("/laporan", administration_manager.GetLaporan)
 
 		// Verifikasi Final Pendaftaran
-		manager.GET("/verifikasi", controllers.GetManagerQueue)
-		manager.GET("/verifikasi/:nomor", controllers.GetManagerDetailVerifikasi)
-		manager.POST("/verifikasi/:nomor/approve", controllers.ManagerApprovePendaftaran)
-		manager.POST("/verifikasi/:nomor/perbaikan", controllers.ManagerMintaPerbaikan)
+		mgrGroup.GET("/verifikasi", administration_manager.GetManagerQueue)
+		mgrGroup.GET("/verifikasi/:nomor", administration_manager.GetManagerDetailVerifikasi)
+		mgrGroup.POST("/verifikasi/:nomor/approve", administration_manager.ManagerApprovePendaftaran)
+		mgrGroup.POST("/verifikasi/:nomor/perbaikan", administration_manager.ManagerMintaPerbaikan)
 
 		// Dokumen Perjalanan (Visa, Tiket, Nusuk)
-		manager.GET("/dokumen-perjalanan/:nomor", controllers.GetDokumenPerjalanan)
-		manager.POST("/pendaftaran/:nomor/dokumen-perjalanan", controllers.ManagerUploadDokumenPerjalanan)
-		manager.DELETE("/dokumen-perjalanan/:id", controllers.ManagerDeleteDokumenPerjalanan)
+		mgrGroup.GET("/dokumen-perjalanan/:nomor", administration_manager.GetDokumenPerjalanan)
+		mgrGroup.POST("/pendaftaran/:nomor/dokumen-perjalanan", administration_manager.ManagerUploadDokumenPerjalanan)
+		mgrGroup.DELETE("/dokumen-perjalanan/:id", administration_manager.ManagerDeleteDokumenPerjalanan)
 
 		// Badges Manager
-		manager.GET("/badges", controllers.GetManagerBadges)
+		mgrGroup.GET("/badges", administration_manager.GetManagerBadges)
 	}
 }

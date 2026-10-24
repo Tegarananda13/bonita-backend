@@ -16,9 +16,9 @@ const (
 type Ulasan struct {
 	ID            uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
 	PendaftaranID string    `gorm:"column:pendaftaran_id;not null;index" json:"pendaftaran_id"` // FK ke pendaftaran.nomor_pendaftaran
-	Rating        int       `gorm:"not null" json:"rating"`                             // 1 - 5
+	Rating        int       `gorm:"not null" json:"rating"`                                     // 1 - 5
 	Komentar      string    `gorm:"type:text;not null" json:"komentar"`
-	Status        string    `gorm:"default:'menunggu';index" json:"status"`             // menunggu, disetujui, ditolak
+	Status        string    `gorm:"default:'menunggu';index" json:"status"` // menunggu, disetujui, ditolak
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 

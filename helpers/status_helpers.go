@@ -2,6 +2,8 @@ package helpers
 
 import (
 	"log"
+	"sort"
+	"strings"
 
 	"bonita-backend/config"
 	"bonita-backend/models"
@@ -225,4 +227,108 @@ func SyncActivePendaftaran() {
 	for _, p := range noInvoiceList {
 		SyncPendaftaranStatusByNomor(p.NomorPendaftaran)
 	}
+}
+
+// PaymentStatusFromPendaftaran mengambil payment_status dari Invoice milik Pendaftaran.
+// Mengembalikan string kosong jika Invoice belum ada.
+func PaymentStatusFromPendaftaran(p models.Pendaftaran) string {
+	if p.NomorInvoice == "" {
+		return PaymentBelum
+	}
+	return p.Invoice.StatusPembayaran
+}
+
+// GetStatusPriority menentukan nomor kelompok prioritas status (1..8).
+func GetStatusPriority(status string) int {
+	s := strings.ToLower(strings.TrimSpace(status))
+	switch s {
+	case "perlu_perbaikan":
+		return 1
+	case "menunggu_pembayaran", "menunggu_dokumen", "menunggu":
+		return 2
+	case "proses", "diproses":
+		return 3
+	case "menunggu_verifikasi_manager":
+		return 4
+	case "siap_berangkat":
+		return 5
+	case "selesai":
+		return 6
+	case "kadaluarsa", "batal":
+		return 7
+	default:
+		return 8
+	}
+}
+
+// SortPendaftaran mengurutkan pendaftaran secara deterministik berdasarkan prioritas status dan tanggal.
+func SortPendaftaran(list []models.Pendaftaran) {
+	sort.SliceStable(list, func(i, j int) bool {
+		a := list[i]
+		b := list[j]
+
+		prioA := GetStatusPriority(a.Status)
+		prioB := GetStatusPriority(b.Status)
+
+		if prioA != prioB {
+			return prioA < prioB
+		}
+
+		switch prioA {
+		case 1, 2:
+			// Perlu perbaikan / Menunggu pembayaran / dokumen: paling lama menunggu terlebih dahulu (ASC)
+			if !a.TanggalDaftar.Equal(b.TanggalDaftar) {
+				return a.TanggalDaftar.Before(b.TanggalDaftar)
+			}
+			return a.NomorPendaftaran < b.NomorPendaftaran
+
+		case 3:
+			// Sedang proses: tanggal pendaftaran paling lama terlebih dahulu (ASC)
+			if !a.TanggalDaftar.Equal(b.TanggalDaftar) {
+				return a.TanggalDaftar.Before(b.TanggalDaftar)
+			}
+			return a.NomorPendaftaran < b.NomorPendaftaran
+
+		case 4, 5:
+			// Menunggu verifikasi manager / Siap berangkat: tanggal keberangkatan paling dekat terlebih dahulu (ASC)
+			if !a.Paket.TanggalBerangkat.Equal(b.Paket.TanggalBerangkat) {
+				return a.Paket.TanggalBerangkat.Before(b.Paket.TanggalBerangkat)
+			}
+			if !a.TanggalDaftar.Equal(b.TanggalDaftar) {
+				return a.TanggalDaftar.Before(b.TanggalDaftar)
+			}
+			return a.NomorPendaftaran < b.NomorPendaftaran
+
+		case 6:
+			// Selesai: tanggal penyelesaian terbaru terlebih dahulu (DESC)
+			if !a.Paket.TanggalBerangkat.Equal(b.Paket.TanggalBerangkat) {
+				return a.Paket.TanggalBerangkat.After(b.Paket.TanggalBerangkat)
+			}
+			if !a.TanggalDaftar.Equal(b.TanggalDaftar) {
+				return a.TanggalDaftar.After(b.TanggalDaftar)
+			}
+			return a.NomorPendaftaran > b.NomorPendaftaran
+
+		case 7:
+			// Kedaluwarsa / dibatalkan: tanggal perubahan status terbaru terlebih dahulu (DESC)
+			dateA := a.BatasWaktuDP
+			if dateA.IsZero() {
+				dateA = a.TanggalDaftar
+			}
+			dateB := b.BatasWaktuDP
+			if dateB.IsZero() {
+				dateB = b.TanggalDaftar
+			}
+			if !dateA.Equal(dateB) {
+				return dateA.After(dateB)
+			}
+			if !a.TanggalDaftar.Equal(b.TanggalDaftar) {
+				return a.TanggalDaftar.After(b.TanggalDaftar)
+			}
+			return a.NomorPendaftaran > b.NomorPendaftaran
+
+		default:
+			return a.TanggalDaftar.Before(b.TanggalDaftar)
+		}
+	})
 }

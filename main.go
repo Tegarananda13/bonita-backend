@@ -4,7 +4,7 @@ import (
 	"log"
 
 	"bonita-backend/config"
-	"bonita-backend/controllers"
+	"bonita-backend/controllers/admin"
 	"bonita-backend/routes"
 
 	"github.com/gin-contrib/cors"
@@ -50,7 +50,7 @@ func main() {
 	routes.SetupRoutes(r)
 
 	// Mulai scheduler expiry DP di background
-	controllers.StartExpiryScheduler()
+	admin.StartExpiryScheduler()
 
 	r.Run(":8080")
 	// r.Run("0.0.0.0:8080")

@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"bonita-backend/config"
 	"bonita-backend/models"
 	"sort"
 	"strings"
@@ -118,4 +119,25 @@ func GetDocumentCompletenessLabel(dokumenList []models.Dokumen) string {
 		return "Dokumen Lengkap"
 	}
 	return "Dokumen Belum Lengkap"
+}
+
+// RecalcDocumentStatus menghitung ulang document_status dari seluruh dokumen berdasarkan 5 status konsisten:
+// 1. belum: belum ada dokumen yang diunggah
+// 2. pending: ada dokumen yang diunggah dan sedang menunggu verifikasi admin
+// 3. revisi: seluruh dokumen terunggah sudah diverifikasi, dan ada dokumen yang ditolak
+// 4. lengkap: seluruh dokumen wajib sudah diverifikasi dan berstatus diterima
+// 5. belum_lengkap: seluruh dokumen terunggah sudah diverifikasi (diterima), tetapi persyaratan dokumen wajib belum lengkap
+func RecalcDocumentStatus(nomorPendaftaran string) string {
+	var dokumenList []models.Dokumen
+	config.DB.Where("nomor_pendaftaran = ?", nomorPendaftaran).Order("created_at ASC").Find(&dokumenList)
+
+	documentStatus := CalculateDocumentStatus(dokumenList)
+
+	config.DB.
+		Model(&models.Pendaftaran{}).
+		Where("nomor_pendaftaran = ?", nomorPendaftaran).
+		Update("document_status", documentStatus)
+
+	UpdateStatusPendaftaran(nomorPendaftaran)
+	return documentStatus
 }
