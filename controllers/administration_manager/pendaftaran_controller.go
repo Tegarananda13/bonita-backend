@@ -85,11 +85,27 @@ func GetManagerQueue(c *gin.Context) {
 			approverNama = p.Approver.Nama
 		}
 
+		// Nama/NIK yang ditampilkan adalah jamaah PERTAMA dalam grup (urutan pendaftaran riil:
+		// anggota dibuat berurutan sehingga tanggal_daftar ASC = urutan input). Jangan memakai
+		// baris pertama hasil query, karena urutannya mengikuti tab (mis. approved_at DESC).
+		namaJamaah := p.Customer.Nama
+		nikJamaah := p.Customer.NIK
+		if totalJamaah > 1 {
+			var firstMember models.Pendaftaran
+			if err := config.DB.Preload("Customer").
+				Where("nomor_invoice = ?", p.NomorInvoice).
+				Order("tanggal_daftar ASC, nomor_pendaftaran ASC").
+				First(&firstMember).Error; err == nil && firstMember.Customer.Nama != "" {
+				namaJamaah = firstMember.Customer.Nama
+				nikJamaah = firstMember.Customer.NIK
+			}
+		}
+
 		result = append(result, gin.H{
 			"nomor_pendaftaran":          p.NomorPendaftaran,
 			"nomor_invoice":              nomorInvoice,
-			"nama_customer":              p.Customer.Nama,
-			"nik_customer":               p.Customer.NIK,
+			"nama_customer":              namaJamaah,
+			"nik_customer":               nikJamaah,
 			"total_jamaah":               totalJamaah,
 			"paket":                      p.Paket.NamaPaket,
 			"tanggal_berangkat":          p.Paket.TanggalBerangkat,

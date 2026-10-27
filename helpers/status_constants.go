@@ -9,6 +9,10 @@ const (
 	PaymentVerificationDiterima = "diterima"
 	PaymentVerificationDitolak  = "ditolak"
 
+	DocStatusPending  = "pending"
+	DocStatusDiterima = "diterima"
+	DocStatusDitolak  = "ditolak"
+
 	DocumentBelum        = "belum"
 	DocumentPending      = "pending"
 	DocumentBelumLengkap = "belum_lengkap"
