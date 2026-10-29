@@ -16,6 +16,9 @@ import (
 	"github.com/google/uuid"
 )
 
+// askGemini didelegasikan ke helpers.AskGemini secara default, dan dapat di-override pada unit test.
+var askGemini = helpers.AskGemini
+
 // ── Intent Keywords untuk deteksi pengaduan ───────────────────────────────────
 
 var intentPengaduan = []string{
@@ -276,7 +279,7 @@ func Chatbot(c *gin.Context) {
 
 	// ── PERTANYAAN NORMAL → GEMINI ────────────────────────────────────────────
 
-	jawaban, err := helpers.AskGemini(req.Pertanyaan)
+	jawaban, err := askGemini(req.Pertanyaan)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -428,7 +431,7 @@ func handleRegistrasiFlow(c *gin.Context, req ChatbotRequest) {
 			return
 		}
 		// Pertanyaan umum lainnya → alihkan ke Gemini tanpa error
-		jawaban, err := helpers.AskGemini(req.Pertanyaan)
+		jawaban, err := askGemini(req.Pertanyaan)
 		if err != nil {
 			jawaban = "Ada yang bisa saya bantu lagi? Ketik **daftar umroh** jika Anda ingin mendaftarkan jamaah."
 		}

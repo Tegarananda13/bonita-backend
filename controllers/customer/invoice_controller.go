@@ -91,14 +91,14 @@ func GetInvoice(c *gin.Context) {
 	var perlengkapanHTML string
 	if totalPerlengkapan > 0 {
 		perlengkapanHTML = fmt.Sprintf(
-			"<div class=\"inv-total-card\" style=\";margin-bottom:0.75rem\"><div><div class=\"inv-total-label\">🧳 Perlengkapan Tambahan Jamaah</div><div class=\"inv-total-meta\">%d jamaah × Rp %s</div></div><div class=\"inv-total-amount\">Rp %s</div></div>",
+			"<div class=\"inv-total-card\" style=\"background:linear-gradient(135deg,#0a2e1c,#1a5c3d);margin-bottom:0.75rem\"><div><div class=\"inv-total-label\">🧳 Perlengkapan Tambahan Jamaah</div><div class=\"inv-total-meta\">%d jamaah × Rp %s</div></div><div class=\"inv-total-amount\">Rp %s</div></div>",
 			jumlahAmbilPerlengkapan, helpers.FormatRupiah(pendaftaran.Paket.Harga), helpers.FormatRupiah(totalPerlengkapan),
 		)
 		// Fix: use actual harga perlengkapan per orang, not paket harga
 		if jumlahAmbilPerlengkapan > 0 {
 			hargaPerlPerOrang := totalPerlengkapan / float64(jumlahAmbilPerlengkapan)
 			perlengkapanHTML = fmt.Sprintf(
-				"<div class=\"inv-total-card\" style=\"background:linear-gradient(135deg,#1e3a5f,#2563eb);margin-bottom:0.75rem\"><div><div class=\"inv-total-label\">🧳 Perlengkapan Tambahan Jamaah</div><div class=\"inv-total-meta\">%d jamaah × Rp %s</div></div><div class=\"inv-total-amount\">Rp %s</div></div>",
+				"<div class=\"inv-total-card\" style=\"background:linear-gradient(135deg,#0a2e1c,#1a5c3d);margin-bottom:0.75rem\"><div><div class=\"inv-total-label\">🧳 Perlengkapan Tambahan Jamaah</div><div class=\"inv-total-meta\">%d jamaah × Rp %s</div></div><div class=\"inv-total-amount\">Rp %s</div></div>",
 				jumlahAmbilPerlengkapan, helpers.FormatRupiah(hargaPerlPerOrang), helpers.FormatRupiah(totalPerlengkapan),
 			)
 		}

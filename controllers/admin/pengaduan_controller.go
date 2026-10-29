@@ -257,25 +257,21 @@ func UpdateStatusPengaduan(c *gin.Context) {
 		switch req.Status {
 		case helpers.PengaduanDiproses:
 			subject = "Pengaduan Anda Sedang Diproses - Bonita Umrah"
-			emailBody = fmt.Sprintf(
-				"Halo %s,\n\n"+
-					"Pengaduan Anda dengan nomor referensi %s saat ini telah berstatus Diproses.\n\n"+
-					"Admin Bonita Umrah sedang menindaklanjuti pengaduan Anda.\n\n"+
-					"Jika ada pertanyaan, Anda dapat menghubungi kami kembali melalui aplikasi.\n\n"+
-					"Terima kasih,\n"+
-					"Tim Bonita Umrah",
-				customer.Nama, nomorUMR,
+			emailBody = helpers.BuildPengaduanEmailHTML(
+				customer.Nama,
+				nomorUMR,
+				helpers.PengaduanDiproses,
+				pengaduan.Judul,
+				pengaduan.Kategori,
 			)
 		case helpers.PengaduanSelesai:
 			subject = "Pengaduan Anda Telah Selesai - Bonita Umrah"
-			emailBody = fmt.Sprintf(
-				"Halo %s,\n\n"+
-					"Pengaduan Anda dengan nomor referensi %s telah berstatus Selesai.\n\n"+
-					"Pengaduan Anda telah selesai ditangani oleh Admin Bonita Umrah.\n\n"+
-					"Jika ada pertanyaan lebih lanjut, Anda dapat menghubungi kami kembali melalui aplikasi.\n\n"+
-					"Terima kasih,\n"+
-					"Tim Bonita Umrah",
-				customer.Nama, nomorUMR,
+			emailBody = helpers.BuildPengaduanEmailHTML(
+				customer.Nama,
+				nomorUMR,
+				helpers.PengaduanSelesai,
+				pengaduan.Judul,
+				pengaduan.Kategori,
 			)
 		default:
 			// Status 'menunggu' — tidak perlu email

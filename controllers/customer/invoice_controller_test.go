@@ -241,6 +241,12 @@ func TestGetInvoice(t *testing.T) {
 		if !strings.Contains(body, "Perlengkapan Tambahan Jamaah") {
 			t.Errorf("Expected body to contain perlengkapan section")
 		}
+		if !strings.Contains(body, "linear-gradient(135deg,#0a2e1c,#1a5c3d)") {
+			t.Errorf("Expected perlengkapan card to have green gradient #0a2e1c,#1a5c3d")
+		}
+		if strings.Contains(body, "#1e3a5f") || strings.Contains(body, "#2563eb") {
+			t.Errorf("Perlengkapan card should not have blue gradient")
+		}
 		if !strings.Contains(body, "Pembayaran 2") {
 			t.Errorf("Expected body to contain 'Pembayaran 2'")
 		}
@@ -474,6 +480,9 @@ func TestGetInvoice(t *testing.T) {
 		body := w.Body.String()
 		if !strings.Contains(body, "Perlengkapan Tambahan Jamaah") {
 			t.Errorf("Expected body to contain perlengkapan section fallback")
+		}
+		if !strings.Contains(body, "linear-gradient(135deg,#0a2e1c,#1a5c3d)") {
+			t.Errorf("Expected perlengkapan fallback card to have green gradient #0a2e1c,#1a5c3d")
 		}
 
 		if err := mock.ExpectationsWereMet(); err != nil {

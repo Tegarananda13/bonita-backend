@@ -14,6 +14,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// sendEmail didelegasikan ke helpers.SendEmail secara default, dan dapat di-override pada unit test.
+var sendEmail = helpers.SendEmail
+
+// generateOTP menghasilkan kode OTP 6 digit secara default, dan dapat di-override pada unit test.
+var generateOTP = func() string {
+	return fmt.Sprintf("%06d", rand.Intn(1000000))
+}
+
 func RequestOTP(c *gin.Context) {
 
 	var req struct {
@@ -61,10 +69,7 @@ func RequestOTP(c *gin.Context) {
 	// generate OTP 6 digit
 	rand.Seed(time.Now().UnixNano())
 
-	kode := fmt.Sprintf(
-		"%06d",
-		rand.Intn(1000000),
-	)
+	kode := generateOTP()
 
 	// simpan OTP ke database
 	otp := models.VerifikasiOTP{
@@ -84,22 +89,12 @@ func RequestOTP(c *gin.Context) {
 		return
 	}
 
-	// isi email OTP
+	// isi email OTP menggunakan template HTML profesional Bonita Umroh
 	subject := "Kode OTP Bonita Travel"
-
-	body := fmt.Sprintf(
-		"Halo %s,\n\n"+
-			"Kode OTP Anda adalah: %s\n\n"+
-			"OTP berlaku selama 5 menit.\n"+
-			"Jangan berikan kode ini kepada siapa pun.\n\n"+
-			"Terima kasih,\n"+
-			"Bonita Travel",
-		pendaftaran.Customer.Nama,
-		kode,
-	)
+	body := helpers.BuildOTPEmailHTML(pendaftaran.Customer.Nama, kode)
 
 	// kirim email
-	if err := helpers.SendEmail(
+	if err := sendEmail(
 		pendaftaran.Customer.Email,
 		subject,
 		body,

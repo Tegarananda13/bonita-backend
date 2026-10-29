@@ -101,6 +101,76 @@ func TestGetCustomerDashboard(t *testing.T) {
 		}
 	})
 
+	t.Run("NotFound_DatabaseErrorOnMainQuery", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+
+		mock.MatchExpectationsInOrder(false)
+
+		mockInitialStatusCheck(mock, nomorPendaftaran, helpers.StatusProses, nil)
+		mockSyncPendaftaranStatusQuick(mock, nomorPendaftaran)
+
+		// Main query returns database connection error
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomorPendaftaran, 1).
+			WillReturnError(sql.ErrConnDone)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request, _ = http.NewRequest(http.MethodGet, "/customer/dashboard", nil)
+		c.Set("pendaftaran_id", nomorPendaftaran)
+
+		GetCustomerDashboard(c)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("Expected HTTP 404 Not Found, got %d", w.Code)
+		}
+
+		var resp map[string]interface{}
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		if resp["error"] != "Pendaftaran tidak ditemukan" {
+			t.Errorf("Unexpected error message: %v", resp["error"])
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("NotFound_EmptyNomorPendaftaran", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+
+		mock.MatchExpectationsInOrder(false)
+
+		mockInitialStatusCheck(mock, "", "", sql.ErrNoRows)
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs("", 1).
+			WillReturnError(sql.ErrNoRows)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request, _ = http.NewRequest(http.MethodGet, "/customer/dashboard", nil)
+		c.Set("pendaftaran_id", "")
+
+		GetCustomerDashboard(c)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("Expected HTTP 404 Not Found, got %d", w.Code)
+		}
+
+		var resp map[string]interface{}
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		if resp["error"] != "Pendaftaran tidak ditemukan" {
+			t.Errorf("Unexpected error message: %v", resp["error"])
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
 	t.Run("Success_StatusPerluPerbaikan_SkipsSync_WithPrimaryCoverPhoto", func(t *testing.T) {
 		mock, cleanup := setupMockDB(t)
 		defer cleanup()
@@ -585,6 +655,75 @@ func TestGetCustomerPendaftaranStatus(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request, _ = http.NewRequest(http.MethodGet, "/customer/status", nil)
 		c.Set("pendaftaran_id", nomorPendaftaran)
+
+		GetCustomerPendaftaranStatus(c)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("Expected HTTP 404 Not Found, got %d", w.Code)
+		}
+
+		var resp map[string]interface{}
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		if resp["error"] != "Pendaftaran tidak ditemukan" {
+			t.Errorf("Unexpected error message: %v", resp["error"])
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("NotFound_DatabaseErrorOnMainQuery", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+
+		mock.MatchExpectationsInOrder(false)
+
+		mockInitialStatusCheck(mock, nomorPendaftaran, helpers.StatusProses, nil)
+		mockSyncPendaftaranStatusQuick(mock, nomorPendaftaran)
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomorPendaftaran, 1).
+			WillReturnError(sql.ErrConnDone)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request, _ = http.NewRequest(http.MethodGet, "/customer/status", nil)
+		c.Set("pendaftaran_id", nomorPendaftaran)
+
+		GetCustomerPendaftaranStatus(c)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("Expected HTTP 404 Not Found, got %d", w.Code)
+		}
+
+		var resp map[string]interface{}
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		if resp["error"] != "Pendaftaran tidak ditemukan" {
+			t.Errorf("Unexpected error message: %v", resp["error"])
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("NotFound_EmptyNomorPendaftaran", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+
+		mock.MatchExpectationsInOrder(false)
+
+		mockInitialStatusCheck(mock, "", "", sql.ErrNoRows)
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs("", 1).
+			WillReturnError(sql.ErrNoRows)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request, _ = http.NewRequest(http.MethodGet, "/customer/status", nil)
+		c.Set("pendaftaran_id", "")
 
 		GetCustomerPendaftaranStatus(c)
 

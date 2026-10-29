@@ -2631,3 +2631,226 @@ func TestAdminBatalkanPendaftaran(t *testing.T) {
 		}
 	})
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. TestAdminUpdateJamaah (Dashboard Admin Edit Biodata Jamaah)
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestAdminUpdateJamaah(t *testing.T) {
+	nomor := "UMR-20261029-ADM01"
+	nomorInvoice := "INV-BNT-2026-ADM01"
+	nik := "3201011212900077"
+	adminUUID := uuid.New()
+	now := time.Now()
+	tglLahirAwal := time.Date(1988, 3, 20, 0, 0, 0, 0, time.UTC)
+
+	pendaftaranCols := []string{
+		"nomor_pendaftaran", "customer_nik", "nomor_invoice", "status", "document_status",
+	}
+	customerCols := []string{
+		"nik", "nama", "tempat_lahir", "tanggal_lahir", "jenis_kelamin",
+		"no_hp", "email", "alamat_lengkap", "provinsi", "kabupaten_kota",
+		"kecamatan", "kelurahan_desa", "kode_pos", "created_at",
+	}
+
+	validPayload := func() map[string]interface{} {
+		return map[string]interface{}{
+			"nama":           "Hj. Siti Aminah",
+			"tempat_lahir":   "Surabaya",
+			"tanggal_lahir":  "1988-03-25",
+			"jenis_kelamin":  "Perempuan",
+			"no_hp":          "081355557777",
+			"email":          "siti.aminah@example.com",
+			"alamat_lengkap": "Jl. Darmo No. 45",
+			"provinsi":       "Jawa Timur",
+			"kabupaten_kota": "Kota Surabaya",
+			"kecamatan":      "Wonokromo",
+			"kelurahan_desa": "Darmo",
+			"kode_pos":       "60241",
+		}
+	}
+
+	// 5. Admin berhasil mengedit data jamaah melalui detail pendaftaran
+	t.Run("Success_AdminEditsJamaahBiodata", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomor, 1).
+			WillReturnRows(sqlmock.NewRows(pendaftaranCols).
+				AddRow(nomor, nik, nomorInvoice, helpers.StatusProses, helpers.DocumentLengkap))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "customer" WHERE nik = $1 ORDER BY "customer"."nik" LIMIT $2`)).
+			WithArgs(nik, 1).
+			WillReturnRows(sqlmock.NewRows(customerCols).
+				AddRow(nik, "Siti Aminah", "Malang", tglLahirAwal, "Perempuan",
+					"081300001111", "siti.lama@example.com", "Jl. Lama No. 2",
+					"Jawa Timur", "Malang", "Klojen", "Kauman", "65119", now))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "customer" SET`)).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		body, _ := json.Marshal(validPayload())
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("user_id", adminUUID.String())
+		c.Set("role", "admin")
+		c.Params = gin.Params{{Key: "nomor", Value: nomor}}
+		c.Request = httptest.NewRequest(http.MethodPut, "/admin/pendaftaran/"+nomor+"/jamaah", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		AdminUpdateJamaah(c)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var resp map[string]interface{}
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		if resp["nomor_pendaftaran"] != nomor || resp["nomor_invoice"] != nomorInvoice {
+			t.Errorf("Expected consistent nomor_pendaftaran and nomor_invoice, got %v", resp)
+		}
+		cust := resp["customer"].(map[string]interface{})
+		if cust["nama"] != "Hj. Siti Aminah" || cust["nik"] != nik {
+			t.Errorf("Unexpected customer data: %v", cust)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("Unfulfilled mock expectations: %v", err)
+		}
+	})
+
+	// 6. Pengguna tanpa izin tidak dapat mengakses endpoint edit
+	t.Run("Unauthorized_NoUserID", func(t *testing.T) {
+		body, _ := json.Marshal(validPayload())
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Params = gin.Params{{Key: "nomor", Value: nomor}}
+		c.Request = httptest.NewRequest(http.MethodPut, "/admin/pendaftaran/"+nomor+"/jamaah", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		AdminUpdateJamaah(c)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("Expected status 401, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("Forbidden_UnauthorizedRole", func(t *testing.T) {
+		body, _ := json.Marshal(validPayload())
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("user_id", adminUUID.String())
+		c.Set("role", "customer")
+		c.Params = gin.Params{{Key: "nomor", Value: nomor}}
+		c.Request = httptest.NewRequest(http.MethodPut, "/admin/pendaftaran/"+nomor+"/jamaah", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		AdminUpdateJamaah(c)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected status 403, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// 7. Data tidak ditemukan
+	t.Run("NotFound_PendaftaranNotFound", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomor, 1).
+			WillReturnError(sql.ErrNoRows)
+
+		body, _ := json.Marshal(validPayload())
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("user_id", adminUUID.String())
+		c.Set("role", "admin")
+		c.Params = gin.Params{{Key: "nomor", Value: nomor}}
+		c.Request = httptest.NewRequest(http.MethodPut, "/admin/pendaftaran/"+nomor+"/jamaah", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		AdminUpdateJamaah(c)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("Expected status 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// 8. Input kosong atau tidak valid (termasuk percobaan mengubah NIK)
+	t.Run("BadRequest_InvalidInputOrAttemptToMutateNIK", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomor, 1).
+			WillReturnRows(sqlmock.NewRows(pendaftaranCols).
+				AddRow(nomor, nik, nomorInvoice, helpers.StatusProses, helpers.DocumentLengkap))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "customer" WHERE nik = $1 ORDER BY "customer"."nik" LIMIT $2`)).
+			WithArgs(nik, 1).
+			WillReturnRows(sqlmock.NewRows(customerCols).
+				AddRow(nik, "Siti Aminah", "Malang", tglLahirAwal, "Perempuan",
+					"081300001111", "siti.lama@example.com", "Jl. Lama No. 2",
+					"Jawa Timur", "Malang", "Klojen", "Kauman", "65119", now))
+
+		payload := validPayload()
+		payload["nik"] = "3201999988887777"
+		body, _ := json.Marshal(payload)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("user_id", adminUUID.String())
+		c.Set("role", "admin")
+		c.Params = gin.Params{{Key: "nomor", Value: nomor}}
+		c.Request = httptest.NewRequest(http.MethodPut, "/admin/pendaftaran/"+nomor+"/jamaah", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		AdminUpdateJamaah(c)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("Expected status 400 when attempting to mutate NIK, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// 9. Kegagalan penyimpanan database
+	t.Run("InternalServerError_DBUpdateFails", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomor, 1).
+			WillReturnRows(sqlmock.NewRows(pendaftaranCols).
+				AddRow(nomor, nik, nomorInvoice, helpers.StatusProses, helpers.DocumentLengkap))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "customer" WHERE nik = $1 ORDER BY "customer"."nik" LIMIT $2`)).
+			WithArgs(nik, 1).
+			WillReturnRows(sqlmock.NewRows(customerCols).
+				AddRow(nik, "Siti Aminah", "Malang", tglLahirAwal, "Perempuan",
+					"081300001111", "siti.lama@example.com", "Jl. Lama No. 2",
+					"Jawa Timur", "Malang", "Klojen", "Kauman", "65119", now))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "customer" SET`)).
+			WillReturnError(errors.New("db failure"))
+		mock.ExpectRollback()
+
+		body, _ := json.Marshal(validPayload())
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("user_id", adminUUID.String())
+		c.Set("role", "admin")
+		c.Params = gin.Params{{Key: "nomor", Value: nomor}}
+		c.Request = httptest.NewRequest(http.MethodPut, "/admin/pendaftaran/"+nomor+"/jamaah", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		AdminUpdateJamaah(c)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("Expected status 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}

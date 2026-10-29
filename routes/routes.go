@@ -87,6 +87,11 @@ func SetupRoutes(r *gin.Engine) {
 			customer.GetCustomerDashboard,
 		)
 
+		custGroup.PUT(
+			"/jamaah",
+			customer.UpdateCustomerJamaah,
+		)
+
 		custGroup.POST(
 			"/dokumen/upload",
 			customer.UploadDokumen,
@@ -196,6 +201,11 @@ func SetupRoutes(r *gin.Engine) {
 		admGroup.GET(
 			"/pendaftaran/:nomor",
 			admin.GetDetailPendaftaran,
+		)
+
+		admGroup.PUT(
+			"/pendaftaran/:nomor/jamaah",
+			admin.AdminUpdateJamaah,
 		)
 
 		admGroup.POST(

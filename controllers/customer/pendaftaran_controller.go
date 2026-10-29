@@ -380,3 +380,267 @@ func GetPendaftaranByNomor(c *gin.Context) {
 		"tanggal":         pendaftaran.TanggalDaftar,
 	})
 }
+
+// UpdateCustomerJamaahRequest adalah payload untuk memperbarui biodata jamaah dari portal customer.
+// Field internal seperti status, payment_status, document_status, user_id, role, approved_by
+// sengaja tidak disertakan pada query update untuk mencegah mass assignment.
+type UpdateCustomerJamaahRequest struct {
+	Nama          string `json:"nama"`
+	TempatLahir   string `json:"tempat_lahir"`
+	TanggalLahir  string `json:"tanggal_lahir"` // YYYY-MM-DD
+	JenisKelamin  string `json:"jenis_kelamin"`
+	NoHP          string `json:"no_hp"`
+	Email         string `json:"email"`
+	AlamatLengkap string `json:"alamat_lengkap"`
+	Provinsi      string `json:"provinsi"`
+	KabupatenKota string `json:"kabupaten_kota"`
+	Kecamatan     string `json:"kecamatan"`
+	KelurahanDesa string `json:"kelurahan_desa"`
+	KodePos       string `json:"kode_pos"`
+
+	// Field identitas yang hanya diperiksa untuk mencegah manipulasi otorisasi (IDOR),
+	// tidak pernah digunakan sebagai dasar penentuan target update.
+	NIK              string `json:"nik"`
+	CustomerNIK      string `json:"customer_nik"`
+	CustomerID       string `json:"customer_id"`
+	NomorPendaftaran string `json:"nomor_pendaftaran"`
+}
+
+func isValidPhoneCustomer(hp string) bool {
+	if len(hp) == 0 {
+		return false
+	}
+	digits := 0
+	for i, ch := range hp {
+		if i == 0 && ch == '+' {
+			continue
+		}
+		if ch < '0' || ch > '9' {
+			return false
+		}
+		digits++
+	}
+	return digits >= 9 && digits <= 15
+}
+
+func isValidEmailCustomer(email string) bool {
+	if strings.ContainsAny(email, " \t\r\n") {
+		return false
+	}
+	atIdx := strings.IndexByte(email, '@')
+	if atIdx <= 0 || atIdx != strings.LastIndexByte(email, '@') {
+		return false
+	}
+	domain := email[atIdx+1:]
+	dotIdx := strings.LastIndexByte(domain, '.')
+	return dotIdx > 0 && dotIdx < len(domain)-1
+}
+
+func normalizeJenisKelaminCustomer(jk string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(jk)) {
+	case "laki-laki":
+		return "Laki-laki", true
+	case "perempuan":
+		return "Perempuan", true
+	case "l":
+		return "L", true
+	case "p":
+		return "P", true
+	default:
+		return "", false
+	}
+}
+
+// UpdateCustomerJamaah — PUT /customer/jamaah
+// Memperbarui biodata jamaah berdasarkan sesi portal customer yang sedang aktif.
+func UpdateCustomerJamaah(c *gin.Context) {
+	nomorSession := strings.TrimSpace(c.GetString("pendaftaran_id"))
+	if nomorSession == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Sesi tidak valid atau telah berakhir"})
+		return
+	}
+
+	var req UpdateCustomerJamaahRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Data tidak lengkap atau format salah"})
+		return
+	}
+
+	// Tolak jika frontend mencoba mengirimkan nomor_pendaftaran milik jamaah lain
+	if reqNomor := strings.TrimSpace(req.NomorPendaftaran); reqNomor != "" && reqNomor != nomorSession {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Anda tidak memiliki izin untuk mengubah data pendaftaran jamaah lain"})
+		return
+	}
+
+	// Cari pendaftaran berdasarkan sesi aktif
+	var pendaftaran models.Pendaftaran
+	if err := config.DB.First(&pendaftaran, "nomor_pendaftaran = ?", nomorSession).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pendaftaran tidak ditemukan"})
+		return
+	}
+
+	// Cari data customer berdasarkan relasi pendaftaran.CustomerNIK
+	var customer models.Customer
+	if err := config.DB.First(&customer, "nik = ?", pendaftaran.CustomerNIK).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Data jamaah tidak ditemukan"})
+		return
+	}
+
+	// Tolak jika frontend mencoba mengirimkan NIK / customer_id milik jamaah lain
+	if reqNIK := strings.TrimSpace(req.NIK); reqNIK != "" && reqNIK != pendaftaran.CustomerNIK {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Anda tidak memiliki izin untuk mengubah data jamaah lain"})
+		return
+	}
+	if reqCustNIK := strings.TrimSpace(req.CustomerNIK); reqCustNIK != "" && reqCustNIK != pendaftaran.CustomerNIK {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Anda tidak memiliki izin untuk mengubah data jamaah lain"})
+		return
+	}
+	if reqCustID := strings.TrimSpace(req.CustomerID); reqCustID != "" && reqCustID != pendaftaran.CustomerNIK {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Anda tidak memiliki izin untuk mengubah data jamaah lain"})
+		return
+	}
+
+	// Validasi field wilayah jika dikirim hanya berisi spasi
+	if (len(req.Provinsi) > 0 && strings.TrimSpace(req.Provinsi) == "") ||
+		(len(req.KabupatenKota) > 0 && strings.TrimSpace(req.KabupatenKota) == "") ||
+		(len(req.Kecamatan) > 0 && strings.TrimSpace(req.Kecamatan) == "") ||
+		(len(req.KelurahanDesa) > 0 && strings.TrimSpace(req.KelurahanDesa) == "") ||
+		(len(req.KodePos) > 0 && strings.TrimSpace(req.KodePos) == "") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Field alamat wilayah tidak boleh hanya berisi spasi"})
+		return
+	}
+
+	nama := strings.TrimSpace(req.Nama)
+	tempatLahir := strings.TrimSpace(req.TempatLahir)
+	tanggalLahirStr := strings.TrimSpace(req.TanggalLahir)
+	jenisKelaminRaw := strings.TrimSpace(req.JenisKelamin)
+	noHP := strings.TrimSpace(req.NoHP)
+	email := strings.TrimSpace(req.Email)
+	alamatLengkap := strings.TrimSpace(req.AlamatLengkap)
+
+	if nama == "" || tempatLahir == "" || tanggalLahirStr == "" ||
+		jenisKelaminRaw == "" || noHP == "" || email == "" || alamatLengkap == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Semua field biodata wajib diisi"})
+		return
+	}
+
+	if len([]rune(nama)) < 2 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Nama lengkap minimal 2 karakter"})
+		return
+	}
+
+	tl, err := time.Parse("2006-01-02", tanggalLahirStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format tanggal lahir tidak valid (gunakan YYYY-MM-DD)"})
+		return
+	}
+	if tl.After(time.Now()) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tanggal lahir tidak boleh melebihi tanggal hari ini"})
+		return
+	}
+
+	jenisKelamin, ok := normalizeJenisKelaminCustomer(jenisKelaminRaw)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Jenis kelamin tidak valid (pilih Laki-laki atau Perempuan)"})
+		return
+	}
+
+	if !isValidPhoneCustomer(noHP) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Nomor HP tidak valid (gunakan 10-15 digit angka)"})
+		return
+	}
+
+	if !isValidEmailCustomer(email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format email tidak valid"})
+		return
+	}
+
+	provinsi := strings.TrimSpace(req.Provinsi)
+	if provinsi == "" {
+		provinsi = customer.Provinsi
+	}
+	kabupatenKota := strings.TrimSpace(req.KabupatenKota)
+	if kabupatenKota == "" {
+		kabupatenKota = customer.KabupatenKota
+	}
+	kecamatan := strings.TrimSpace(req.Kecamatan)
+	if kecamatan == "" {
+		kecamatan = customer.Kecamatan
+	}
+	kelurahanDesa := strings.TrimSpace(req.KelurahanDesa)
+	if kelurahanDesa == "" {
+		kelurahanDesa = customer.KelurahanDesa
+	}
+	kodePos := strings.TrimSpace(req.KodePos)
+	if kodePos != "" {
+		if len(kodePos) != 5 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Kode pos harus terdiri dari 5 digit angka"})
+			return
+		}
+		for _, ch := range kodePos {
+			if ch < '0' || ch > '9' {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Kode pos harus terdiri dari 5 digit angka"})
+				return
+			}
+		}
+	} else {
+		kodePos = customer.KodePos
+	}
+
+	tx := config.DB.Begin()
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memulai transaksi database"})
+		return
+	}
+
+	updates := map[string]interface{}{
+		"nama":           nama,
+		"tempat_lahir":   tempatLahir,
+		"tanggal_lahir":  tl,
+		"jenis_kelamin":  jenisKelamin,
+		"no_hp":          noHP,
+		"email":          email,
+		"alamat_lengkap": alamatLengkap,
+		"provinsi":       provinsi,
+		"kabupaten_kota": kabupatenKota,
+		"kecamatan":      kecamatan,
+		"kelurahan_desa": kelurahanDesa,
+		"kode_pos":       kodePos,
+	}
+
+	if err := tx.Model(&models.Customer{}).
+		Where("nik = ?", pendaftaran.CustomerNIK).
+		Updates(updates).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan perubahan data jamaah"})
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan perubahan data jamaah"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":           "Data jamaah berhasil diperbarui",
+		"nomor_pendaftaran": pendaftaran.NomorPendaftaran,
+		"nomor_invoice":     pendaftaran.NomorInvoice,
+		"status":            pendaftaran.Status,
+		"document_status":   pendaftaran.DocumentStatus,
+		"customer": gin.H{
+			"nik":            customer.NIK,
+			"nama":           nama,
+			"tempat_lahir":   tempatLahir,
+			"tanggal_lahir":  tl,
+			"jenis_kelamin":  jenisKelamin,
+			"no_hp":          noHP,
+			"email":          email,
+			"alamat_lengkap": alamatLengkap,
+			"provinsi":       provinsi,
+			"kabupaten_kota": kabupatenKota,
+			"kecamatan":      kecamatan,
+			"kelurahan_desa": kelurahanDesa,
+			"kode_pos":       kodePos,
+		},
+	})
+}
