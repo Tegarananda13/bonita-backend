@@ -13,8 +13,11 @@ import (
 
 var DB *gorm.DB
 
-func ConnectDatabase() {
-	dsn := fmt.Sprintf(
+var logFatal = log.Fatalf
+
+// BuildDSN membentuk connection string PostgreSQL dari environment variables.
+func BuildDSN() string {
+	return fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
 		os.Getenv("DB_HOST"),
 		os.Getenv("DB_USER"),
@@ -23,6 +26,25 @@ func ConnectDatabase() {
 		os.Getenv("DB_PORT"),
 		os.Getenv("DB_SSLMODE"),
 	)
+}
+
+// ConfigureConnectionPool mengonfigurasi connection pool SQL database.
+func ConfigureConnectionPool(database *gorm.DB) error {
+	sqlDB, err := database.DB()
+	if err != nil {
+		return err
+	}
+
+	// Connection Pool Configuration
+	sqlDB.SetMaxOpenConns(10)           // maksimal koneksi aktif
+	sqlDB.SetMaxIdleConns(5)            // koneksi idle yang disimpan
+	sqlDB.SetConnMaxLifetime(time.Hour) // koneksi direcycle tiap 1 jam
+	sqlDB.SetConnMaxIdleTime(30 * time.Minute)
+	return nil
+}
+
+func ConnectDatabase() {
+	dsn := BuildDSN()
 
 	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		NamingStrategy: schema.NamingStrategy{
@@ -34,19 +56,14 @@ func ConnectDatabase() {
 	})
 
 	if err != nil {
-		log.Fatalf("Gagal koneksi ke database: %v", err)
+		logFatal("Gagal koneksi ke database: %v", err)
+		return
 	}
 
-	sqlDB, err := database.DB()
-	if err != nil {
-		log.Fatalf("Gagal mendapatkan database instance: %v", err)
+	if err := ConfigureConnectionPool(database); err != nil {
+		logFatal("Gagal mendapatkan database instance: %v", err)
+		return
 	}
-
-	// Connection Pool Configuration
-	sqlDB.SetMaxOpenConns(10)           // maksimal koneksi aktif
-	sqlDB.SetMaxIdleConns(5)            // koneksi idle yang disimpan
-	sqlDB.SetConnMaxLifetime(time.Hour) // koneksi direcycle tiap 1 jam
-	sqlDB.SetConnMaxIdleTime(30 * time.Minute)
 
 	fmt.Println("Database connected!")
 

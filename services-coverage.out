@@ -1,0 +1,19 @@
+mode: set
+bonita-backend/services/prompt_builder.go:42.35,51.25 3 1
+bonita-backend/services/prompt_builder.go:51.25,53.3 1 1
+bonita-backend/services/prompt_builder.go:55.2,58.30 3 1
+bonita-backend/services/prompt_builder.go:58.30,60.20 2 1
+bonita-backend/services/prompt_builder.go:60.20,62.4 1 1
+bonita-backend/services/prompt_builder.go:64.3,83.5 1 1
+bonita-backend/services/prompt_builder.go:86.2,86.20 1 1
+bonita-backend/services/prompt_builder.go:93.40,108.2 1 1
+bonita-backend/services/prompt_builder.go:114.31,142.2 1 1
+bonita-backend/services/prompt_builder.go:150.34,160.2 7 1
+bonita-backend/services/prompt_builder.go:166.37,171.22 3 1
+bonita-backend/services/prompt_builder.go:171.22,172.33 1 1
+bonita-backend/services/prompt_builder.go:172.33,174.4 1 1
+bonita-backend/services/prompt_builder.go:175.3,175.22 1 1
+bonita-backend/services/prompt_builder.go:177.2,177.15 1 1
+bonita-backend/services/prompt_builder.go:180.34,181.13 1 1
+bonita-backend/services/prompt_builder.go:181.13,183.3 1 1
+bonita-backend/services/prompt_builder.go:184.2,184.10 1 1

@@ -21,7 +21,6 @@ func main() {
 
 	config.ConnectDatabase()
 	config.Migrate()
-	config.Seed()
 
 	r := gin.Default()
 

@@ -1,8 +1,42 @@
 package config
 
-import "bonita-backend/models"
+import (
+	"bonita-backend/models"
+
+	"gorm.io/gorm"
+)
+
+var autoMigrateFn = func(db *gorm.DB, dst ...interface{}) error {
+	return db.AutoMigrate(dst...)
+}
+
+// GetMigratedModels mengembalikan daftar struct model yang didaftarkan pada AutoMigrate.
+func GetMigratedModels() []interface{} {
+	return []interface{}{
+		&models.Invoice{},
+		&models.Customer{},
+		&models.User{},
+		&models.PaketUmroh{},
+		&models.Pendaftaran{},
+		&models.Dokumen{},
+		&models.Pembayaran{},
+		&models.VerifikasiOTP{},
+		&models.ChatbotLog{},
+		&models.CustomerSession{},
+		&models.DetailFasilitas{},
+		&models.Pengaduan{},
+		&models.FotoPaket{},
+		&models.FotoFasilitas{},
+		&models.Ulasan{},
+		&models.FotoUlasan{},
+	}
+}
 
 func Migrate() {
+	if DB == nil {
+		return
+	}
+
 	// Step 0: Drop FK constraint lama invoice_id jika masih ada
 	// (Phase 6A sudah drop ini; langkah ini idempoten untuk safety)
 	DB.Exec(`ALTER TABLE pembayaran DROP CONSTRAINT IF EXISTS fk_invoice_pembayaran`)
@@ -55,10 +89,12 @@ func Migrate() {
 	DB.Exec(`ALTER TABLE invoice DROP CONSTRAINT IF EXISTS uni_invoice_nomor_invoice`)
 
 	// Step 1: AutoMigrate semua model
-	DB.AutoMigrate(
+	_ = autoMigrateFn(
+		DB,
 		&models.Invoice{},
 	)
-	DB.AutoMigrate(
+	_ = autoMigrateFn(
+		DB,
 		&models.Customer{},
 		&models.User{},
 		&models.PaketUmroh{},

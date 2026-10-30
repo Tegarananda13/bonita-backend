@@ -9,6 +9,11 @@ import (
 	"google.golang.org/genai"
 )
 
+// newGenAIClient mendefinisikan fungsi pembuat client GenAI, dapat diganti untuk keperluan unit testing.
+var newGenAIClient = func(ctx context.Context, cfg *genai.ClientConfig) (*genai.Client, error) {
+	return genai.NewClient(ctx, cfg)
+}
+
 // AskGemini mengirimkan pertanyaan ke Gemini API.
 //
 // Fungsi ini hanya bertanggung jawab pada proses pengiriman prompt ke Gemini.
@@ -24,7 +29,7 @@ func AskGemini(question string) (string, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 
 	// buat client Gemini
-	client, err := genai.NewClient(
+	client, err := newGenAIClient(
 		context.Background(),
 		&genai.ClientConfig{
 			APIKey: apiKey,

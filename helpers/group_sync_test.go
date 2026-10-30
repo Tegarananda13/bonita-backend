@@ -1,7 +1,9 @@
 package helpers_test
 
 import (
+	"database/sql"
 	"os"
+	"regexp"
 	"testing"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 	"bonita-backend/helpers"
 	"bonita-backend/models"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
@@ -113,6 +116,10 @@ func TestIsInvoiceLunas(t *testing.T) {
 // TestSyncPendaftaranStatus_DatabaseIntegration menguji Test 4, Test 5, Test 7, dan Test 8
 // langsung terhadap database jika koneksi DB tersedia.
 func TestSyncPendaftaranStatus_DatabaseIntegration(t *testing.T) {
+	if !canConnectLocalDB(t) {
+		t.Skip("Skipping live DB test: local PostgreSQL is not reachable")
+		return
+	}
 	// Muat file .env dari root bonita-backend jika DB belum tersambung
 	_ = godotenv.Load("../.env")
 	_ = godotenv.Load(".env")
@@ -314,4 +321,405 @@ func TestSyncPendaftaranStatus_DatabaseIntegration(t *testing.T) {
 		t.Errorf("Expected status to remain '%s' after manager approval, got A=%s, B=%s, C=%s",
 			helpers.StatusSiapBerangkat, checkA.Status, checkB.Status, checkC.Status)
 	}
+}
+
+func TestPaymentStatusFromPendaftaran(t *testing.T) {
+	t.Run("EmptyNomorInvoice_ReturnsPaymentBelum", func(t *testing.T) {
+		p := models.Pendaftaran{NomorInvoice: ""}
+		if got := helpers.PaymentStatusFromPendaftaran(p); got != helpers.PaymentBelum {
+			t.Errorf("Expected %q, got %q", helpers.PaymentBelum, got)
+		}
+	})
+
+	t.Run("WithNomorInvoice_ReturnsInvoiceStatusPembayaran", func(t *testing.T) {
+		p := models.Pendaftaran{
+			NomorInvoice: "INV-BNT-2026-001",
+			Invoice:      models.Invoice{StatusPembayaran: models.InvoiceStatusDP},
+		}
+		if got := helpers.PaymentStatusFromPendaftaran(p); got != models.InvoiceStatusDP {
+			t.Errorf("Expected %q, got %q", models.InvoiceStatusDP, got)
+		}
+	})
+}
+
+func TestGetStatusPriority(t *testing.T) {
+	tests := []struct {
+		status string
+		want   int
+	}{
+		{"perlu_perbaikan", 1},
+		{"  PERLU_PERBAIKAN  ", 1},
+		{"menunggu_pembayaran", 2},
+		{"menunggu_dokumen", 2},
+		{"menunggu", 2},
+		{"proses", 3},
+		{"diproses", 3},
+		{"menunggu_verifikasi_manager", 4},
+		{"siap_berangkat", 5},
+		{"selesai", 6},
+		{"kadaluarsa", 7},
+		{"batal", 7},
+		{"unknown_status", 8},
+		{"", 8},
+	}
+
+	for _, tc := range tests {
+		t.Run("Status_"+tc.status, func(t *testing.T) {
+			if got := helpers.GetStatusPriority(tc.status); got != tc.want {
+				t.Errorf("GetStatusPriority(%q) = %d, want %d", tc.status, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSortPendaftaran(t *testing.T) {
+	baseDate := time.Date(2026, time.May, 10, 10, 0, 0, 0, time.UTC)
+	depNear := time.Date(2026, time.June, 1, 0, 0, 0, 0, time.UTC)
+	depFar := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+
+	t.Run("SortsAcrossAll8PriorityGroupsAndTieBreakers", func(t *testing.T) {
+		list := []models.Pendaftaran{
+			// Priority 8 (default)
+			{NomorPendaftaran: "UMR-8B", Status: "lainnya", TanggalDaftar: baseDate.Add(2 * time.Hour)},
+			{NomorPendaftaran: "UMR-8A", Status: "lainnya", TanggalDaftar: baseDate.Add(1 * time.Hour)},
+
+			// Priority 7 (kadaluarsa / batal: DESC by BatasWaktuDP or TanggalDaftar, then NomorPendaftaran DESC)
+			{NomorPendaftaran: "UMR-7C", Status: "batal", TanggalDaftar: baseDate, BatasWaktuDP: time.Time{}},
+			{NomorPendaftaran: "UMR-7B", Status: "kadaluarsa", TanggalDaftar: baseDate.Add(2 * time.Hour), BatasWaktuDP: baseDate.Add(5 * time.Hour)},
+			{NomorPendaftaran: "UMR-7A", Status: "kadaluarsa", TanggalDaftar: baseDate.Add(3 * time.Hour), BatasWaktuDP: baseDate.Add(5 * time.Hour)},
+
+			// Priority 6 (selesai: DESC by TanggalBerangkat, TanggalDaftar, NomorPendaftaran)
+			{NomorPendaftaran: "UMR-6C", Status: "selesai", TanggalDaftar: baseDate, Paket: models.PaketUmroh{TanggalBerangkat: depNear}},
+			{NomorPendaftaran: "UMR-6B", Status: "selesai", TanggalDaftar: baseDate, Paket: models.PaketUmroh{TanggalBerangkat: depFar}},
+			{NomorPendaftaran: "UMR-6A", Status: "selesai", TanggalDaftar: baseDate.Add(time.Hour), Paket: models.PaketUmroh{TanggalBerangkat: depFar}},
+
+			// Priority 5 (siap_berangkat: ASC by TanggalBerangkat, TanggalDaftar, NomorPendaftaran)
+			{NomorPendaftaran: "UMR-5C", Status: "siap_berangkat", TanggalDaftar: baseDate, Paket: models.PaketUmroh{TanggalBerangkat: depFar}},
+			{NomorPendaftaran: "UMR-5B", Status: "siap_berangkat", TanggalDaftar: baseDate, Paket: models.PaketUmroh{TanggalBerangkat: depNear}},
+			{NomorPendaftaran: "UMR-5A", Status: "siap_berangkat", TanggalDaftar: baseDate, Paket: models.PaketUmroh{TanggalBerangkat: depNear}},
+
+			// Priority 4 (menunggu_verifikasi_manager: ASC by TanggalBerangkat, TanggalDaftar)
+			{NomorPendaftaran: "UMR-4B", Status: "menunggu_verifikasi_manager", TanggalDaftar: baseDate.Add(time.Hour), Paket: models.PaketUmroh{TanggalBerangkat: depNear}},
+			{NomorPendaftaran: "UMR-4A", Status: "menunggu_verifikasi_manager", TanggalDaftar: baseDate, Paket: models.PaketUmroh{TanggalBerangkat: depNear}},
+
+			// Priority 3 (proses: ASC by TanggalDaftar, NomorPendaftaran)
+			{NomorPendaftaran: "UMR-3C", Status: "proses", TanggalDaftar: baseDate.Add(time.Hour)},
+			{NomorPendaftaran: "UMR-3B", Status: "proses", TanggalDaftar: baseDate},
+			{NomorPendaftaran: "UMR-3A", Status: "proses", TanggalDaftar: baseDate},
+
+			// Priority 2 (menunggu_pembayaran / menunggu_dokumen: ASC by TanggalDaftar, NomorPendaftaran)
+			{NomorPendaftaran: "UMR-2B", Status: "menunggu_dokumen", TanggalDaftar: baseDate.Add(time.Hour)},
+			{NomorPendaftaran: "UMR-2A", Status: "menunggu_pembayaran", TanggalDaftar: baseDate},
+
+			// Priority 1 (perlu_perbaikan: ASC by TanggalDaftar, NomorPendaftaran)
+			{NomorPendaftaran: "UMR-1B", Status: "perlu_perbaikan", TanggalDaftar: baseDate},
+			{NomorPendaftaran: "UMR-1A", Status: "perlu_perbaikan", TanggalDaftar: baseDate},
+		}
+
+		helpers.SortPendaftaran(list)
+
+		wantOrder := []string{
+			"UMR-1A", "UMR-1B",
+			"UMR-2A", "UMR-2B",
+			"UMR-3A", "UMR-3B", "UMR-3C",
+			"UMR-4A", "UMR-4B",
+			"UMR-5A", "UMR-5B", "UMR-5C",
+			"UMR-6A", "UMR-6B", "UMR-6C",
+			"UMR-7A", "UMR-7B", "UMR-7C",
+			"UMR-8A", "UMR-8B",
+		}
+
+		for i, want := range wantOrder {
+			if list[i].NomorPendaftaran != want {
+				t.Errorf("Index %d: got %q, want %q", i, list[i].NomorPendaftaran, want)
+			}
+		}
+	})
+
+	t.Run("TieBreakByNomorPendaftaranForPriority6And7", func(t *testing.T) {
+		list := []models.Pendaftaran{
+			{NomorPendaftaran: "UMR-6X", Status: "selesai", TanggalDaftar: baseDate, Paket: models.PaketUmroh{TanggalBerangkat: depNear}},
+			{NomorPendaftaran: "UMR-6Y", Status: "selesai", TanggalDaftar: baseDate, Paket: models.PaketUmroh{TanggalBerangkat: depNear}},
+			{NomorPendaftaran: "UMR-7X", Status: "batal", TanggalDaftar: baseDate, BatasWaktuDP: baseDate},
+			{NomorPendaftaran: "UMR-7Y", Status: "batal", TanggalDaftar: baseDate, BatasWaktuDP: baseDate},
+		}
+		helpers.SortPendaftaran(list)
+		if list[0].NomorPendaftaran != "UMR-6Y" || list[1].NomorPendaftaran != "UMR-6X" {
+			t.Errorf("Expected DESC tie-break for priority 6: got %s, %s", list[0].NomorPendaftaran, list[1].NomorPendaftaran)
+		}
+		if list[2].NomorPendaftaran != "UMR-7Y" || list[3].NomorPendaftaran != "UMR-7X" {
+			t.Errorf("Expected DESC tie-break for priority 7: got %s, %s", list[2].NomorPendaftaran, list[3].NomorPendaftaran)
+		}
+	})
+}
+
+func TestSyncPendaftaranStatus_UnitMockDB(t *testing.T) {
+	t.Run("EmptyNomorInvoice_ReturnsEarly", func(t *testing.T) {
+		helpers.SyncPendaftaranStatus("")
+	})
+
+	t.Run("InvoiceNotFound_ReturnsEarly", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+		prevDB := config.DB
+		config.DB = gdb
+		defer func() { config.DB = prevDB }()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "invoice" WHERE nomor_invoice = $1 ORDER BY "invoice"."nomor_invoice" LIMIT $2`)).
+			WithArgs("INV-NOT-FOUND", 1).
+			WillReturnError(sql.ErrNoRows)
+
+		helpers.SyncPendaftaranStatus("INV-NOT-FOUND")
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("Unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("ZeroPayment_And_AllTerminalJamaah", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+		prevDB := config.DB
+		config.DB = gdb
+		defer func() { config.DB = prevDB }()
+
+		invNo := "INV-BNT-2026-TERM"
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "invoice" WHERE nomor_invoice = $1 ORDER BY "invoice"."nomor_invoice" LIMIT $2`)).
+			WithArgs(invNo, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_invoice", "total_tagihan", "total_pembayaran", "status_pembayaran"}).
+				AddRow(invNo, 30000000.0, 0.0, models.InvoiceStatusBelumBayar))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT COALESCE(SUM(jumlah),0) FROM "pembayaran" WHERE nomor_invoice = $1 AND status = $2`)).
+			WithArgs(invNo, helpers.PaymentVerificationDiterima).
+			WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(0.0))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "invoice" SET`)).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_invoice = $1`)).
+			WithArgs(invNo).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice", "status"}).
+				AddRow("UMR-TERM-1", invNo, helpers.StatusBatal).
+				AddRow("UMR-TERM-2", invNo, helpers.StatusSelesai))
+
+		helpers.SyncPendaftaranStatus(invNo)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("Unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("DPPayment_PerluPerbaikanRetained_And_ActiveUpdated", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+		prevDB := config.DB
+		config.DB = gdb
+		defer func() { config.DB = prevDB }()
+
+		invNo := "INV-BNT-2026-DP01"
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "invoice" WHERE nomor_invoice = $1 ORDER BY "invoice"."nomor_invoice" LIMIT $2`)).
+			WithArgs(invNo, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_invoice", "total_tagihan", "total_pembayaran", "status_pembayaran"}).
+				AddRow(invNo, 30000000.0, 0.0, models.InvoiceStatusBelumBayar))
+
+		// Partial payment (DP) = 10,000,000
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT COALESCE(SUM(jumlah),0) FROM "pembayaran" WHERE nomor_invoice = $1 AND status = $2`)).
+			WithArgs(invNo, helpers.PaymentVerificationDiterima).
+			WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(10000000.0))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "invoice" SET`)).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		// 2 active jamaah: UMR-DP-1 (status: menunggu_pembayaran, doc: belum), UMR-DP-2 (status: perlu_perbaikan, doc: belum)
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_invoice = $1`)).
+			WithArgs(invNo).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice", "status", "document_status"}).
+				AddRow("UMR-DP-1", invNo, helpers.StatusMenungguPembayaran, helpers.DocumentBelumLengkap).
+				AddRow("UMR-DP-2", invNo, helpers.StatusPerluPerbaikan, helpers.DocumentBelum))
+
+		// Docs for UMR-DP-1 (empty -> DocumentBelum, which differs from DocumentBelumLengkap -> triggers update)
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "dokumen" WHERE nomor_pendaftaran = $1 ORDER BY created_at ASC`)).
+			WithArgs("UMR-DP-1").
+			WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "pendaftaran" SET "document_status"=$1 WHERE nomor_pendaftaran = $2`)).
+			WithArgs(helpers.DocumentBelum, "UMR-DP-1").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		// Docs for UMR-DP-2 (empty -> DocumentBelum, matches existing DocumentBelum)
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "dokumen" WHERE nomor_pendaftaran = $1 ORDER BY created_at ASC`)).
+			WithArgs("UMR-DP-2").
+			WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+		// UMR-DP-1 status updates from menunggu_pembayaran -> proses; UMR-DP-2 retains perlu_perbaikan
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "pendaftaran" SET "status"=$1 WHERE nomor_pendaftaran = $2`)).
+			WithArgs(helpers.StatusProses, "UMR-DP-1").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		helpers.SyncPendaftaranStatus(invNo)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("Unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("LunasAndComplete_RetainsSiapBerangkatWhenApproved", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+		prevDB := config.DB
+		config.DB = gdb
+		defer func() { config.DB = prevDB }()
+
+		invNo := "INV-BNT-2026-LUNAS"
+		approvedTime := time.Now()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "invoice" WHERE nomor_invoice = $1 ORDER BY "invoice"."nomor_invoice" LIMIT $2`)).
+			WithArgs(invNo, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_invoice", "total_tagihan", "total_pembayaran", "status_pembayaran"}).
+				AddRow(invNo, 30000000.0, 30000000.0, models.InvoiceStatusLunas))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT COALESCE(SUM(jumlah),0) FROM "pembayaran" WHERE nomor_invoice = $1 AND status = $2`)).
+			WithArgs(invNo, helpers.PaymentVerificationDiterima).
+			WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(30000000.0))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "invoice" SET`)).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_invoice = $1`)).
+			WithArgs(invNo).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice", "status", "document_status", "approved_at"}).
+				AddRow("UMR-APPROVED-1", invNo, helpers.StatusSiapBerangkat, helpers.DocumentLengkap, approvedTime))
+
+		docRows := sqlmock.NewRows([]string{"id", "nomor_pendaftaran", "jenis_dokumen", "status_validasi", "created_at"})
+		for _, jenis := range []string{"paspor", "ktp", "kartu_keluarga", "akta_lahir", "vaksin", "pas_foto"} {
+			docRows.AddRow(uuid.New(), "UMR-APPROVED-1", jenis, helpers.PaymentVerificationDiterima, approvedTime)
+		}
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "dokumen" WHERE nomor_pendaftaran = $1 ORDER BY created_at ASC`)).
+			WithArgs("UMR-APPROVED-1").
+			WillReturnRows(docRows)
+
+		helpers.SyncPendaftaranStatus(invNo)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("Unmet expectations: %v", err)
+		}
+	})
+}
+
+func TestSyncPendaftaranStatusByNomor_And_SyncActivePendaftaran(t *testing.T) {
+	t.Run("EmptyNomorPendaftaran_ReturnsEarly", func(t *testing.T) {
+		helpers.SyncPendaftaranStatusByNomor("")
+		helpers.UpdateStatusPendaftaran("")
+	})
+
+	t.Run("NoInvoice_TerminalStatusReturnsEarly", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+		prevDB := config.DB
+		config.DB = gdb
+		defer func() { config.DB = prevDB }()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs("UMR-NOINV-BATAL", 1).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice", "status"}).
+				AddRow("UMR-NOINV-BATAL", "", helpers.StatusBatal))
+
+		helpers.SyncPendaftaranStatusByNomor("UMR-NOINV-BATAL")
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("Unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("NoInvoice_ActiveUpdatesDocAndStatus_And_RetainsPerluPerbaikan", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+		prevDB := config.DB
+		config.DB = gdb
+		defer func() { config.DB = prevDB }()
+
+		// 1. Pendaftaran tanpa invoice dengan seluruh dokumen lengkap -> status berubah dari proses ke menunggu_pembayaran
+		nomor1 := "UMR-NOINV-1"
+		now := time.Now()
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomor1, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice", "status", "document_status"}).
+				AddRow(nomor1, "", helpers.StatusProses, helpers.DocumentBelum))
+
+		docRows := sqlmock.NewRows([]string{"id", "nomor_pendaftaran", "jenis_dokumen", "status_validasi", "created_at"})
+		for _, jenis := range []string{"paspor", "ktp", "kartu_keluarga", "akta_lahir", "vaksin", "pas_foto"} {
+			docRows.AddRow(uuid.New(), nomor1, jenis, helpers.PaymentVerificationDiterima, now)
+		}
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "dokumen" WHERE nomor_pendaftaran = $1 ORDER BY created_at ASC`)).
+			WithArgs(nomor1).
+			WillReturnRows(docRows)
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "pendaftaran" SET "document_status"=$1 WHERE nomor_pendaftaran = $2`)).
+			WithArgs(helpers.DocumentLengkap, nomor1).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "pendaftaran" SET "status"=$1 WHERE nomor_pendaftaran = $2`)).
+			WithArgs(helpers.StatusMenungguPembayaran, nomor1).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		helpers.SyncPendaftaranStatusByNomor(nomor1)
+
+		// 2. Pendaftaran tanpa invoice dengan status perlu_perbaikan & dokumen belum lengkap -> tetap perlu_perbaikan
+		nomor2 := "UMR-NOINV-2"
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomor2, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice", "status", "document_status"}).
+				AddRow(nomor2, "", helpers.StatusPerluPerbaikan, helpers.DocumentBelum))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "dokumen" WHERE nomor_pendaftaran = $1 ORDER BY created_at ASC`)).
+			WithArgs(nomor2).
+			WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+		helpers.SyncPendaftaranStatusByNomor(nomor2)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("Unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("SyncActivePendaftaran_SyncsBothWithInvoiceAndWithoutInvoice", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+		prevDB := config.DB
+		config.DB = gdb
+		defer func() { config.DB = prevDB }()
+
+		// 1. Pluck active invoices
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT DISTINCT "nomor_invoice" FROM "pendaftaran"`)).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_invoice"}).AddRow("INV-ACTIVE-1"))
+
+		// SyncPendaftaranStatus("INV-ACTIVE-1") -> invoice not found so returns quickly
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "invoice" WHERE nomor_invoice = $1 ORDER BY "invoice"."nomor_invoice" LIMIT $2`)).
+			WithArgs("INV-ACTIVE-1", 1).
+			WillReturnError(sql.ErrNoRows)
+
+		// 2. Find no-invoice pendaftarans
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE status NOT IN ($1, $2, $3, $4) AND (nomor_invoice IS NULL OR nomor_invoice = '')`)).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice", "status"}).
+				AddRow("UMR-NOINV-ACT", "", helpers.StatusProses))
+
+		// SyncPendaftaranStatusByNomor("UMR-NOINV-ACT") -> not found so returns quickly
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs("UMR-NOINV-ACT", 1).
+			WillReturnError(sql.ErrNoRows)
+
+		helpers.SyncActivePendaftaran()
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("Unmet expectations: %v", err)
+		}
+	})
 }

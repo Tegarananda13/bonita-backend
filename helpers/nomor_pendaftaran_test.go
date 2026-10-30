@@ -1,9 +1,13 @@
 package helpers_test
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"net"
+	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,9 +15,31 @@ import (
 	"bonita-backend/helpers"
 	"bonita-backend/models"
 
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/joho/godotenv"
 )
+
+func canConnectLocalDB(t *testing.T) bool {
+	t.Helper()
+	_ = godotenv.Load("../.env")
+	_ = godotenv.Load(".env")
+	host := os.Getenv("DB_HOST")
+	port := os.Getenv("DB_PORT")
+	if host == "" {
+		return false
+	}
+	if port == "" {
+		port = "5432"
+	}
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
 
 // TestFormatNomorPendaftaran memastikan format nomor pendaftaran selalu UMR-YYYYMMDD-XXXX
 func TestFormatNomorPendaftaran(t *testing.T) {
@@ -97,7 +123,9 @@ func TestIsDuplicateKeyError(t *testing.T) {
 
 // TestGenerateNomorPendaftaranDB menguji generator dengan koneksi DB nyata (jika tersedia)
 func TestGenerateNomorPendaftaranDB(t *testing.T) {
-	_ = godotenv.Load("../.env")
+	if !canConnectLocalDB(t) {
+		t.Skip("Skipping live DB test: local PostgreSQL is not reachable")
+	}
 	if config.DB == nil {
 		config.ConnectDatabase()
 	}
@@ -123,7 +151,9 @@ func TestGenerateNomorPendaftaranDB(t *testing.T) {
 // TestKompatibilitasNomorLama memastikan bahwa nomor pendaftaran berformat lama
 // tetap dikenali sebagai string valid dan dapat dicari di database
 func TestKompatibilitasNomorLama(t *testing.T) {
-	_ = godotenv.Load("../.env")
+	if !canConnectLocalDB(t) {
+		t.Skip("Skipping live DB test: local PostgreSQL is not reachable")
+	}
 	if config.DB == nil {
 		config.ConnectDatabase()
 	}
@@ -147,7 +177,9 @@ func TestKompatibilitasNomorLama(t *testing.T) {
 // sengaja diset ke nomor yang sudah ada (simulasi konflik), fungsi CreatePendaftaranWithRetry
 // mendeteksi duplikasi key, otomatis membuat nomor baru yang unik, dan berhasil disimpan ke DB.
 func TestCreatePendaftaranWithRetry_ConflictResolution(t *testing.T) {
-	_ = godotenv.Load("../.env")
+	if !canConnectLocalDB(t) {
+		t.Skip("Skipping live DB test: local PostgreSQL is not reachable")
+	}
 	if config.DB == nil {
 		config.ConnectDatabase()
 	}
@@ -190,4 +222,235 @@ func TestCreatePendaftaranWithRetry_ConflictResolution(t *testing.T) {
 
 	// Bersihkan data test
 	config.DB.Where("nomor_pendaftaran = ?", testPendaftaran.NomorPendaftaran).Delete(&models.Pendaftaran{})
+}
+
+func TestGenerateNomorPendaftaran_UnitMockDB(t *testing.T) {
+	fixedDate := time.Date(2026, time.October, 29, 9, 0, 0, 0, time.UTC)
+	pattern := regexp.MustCompile(`^UMR-20261029-[A-Z0-9]{4}$`)
+
+	t.Run("GenerateNomorPendaftaran_SuccessFirstAttempt", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+		nomor, err := helpers.GenerateNomorPendaftaran(gdb)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if !regexp.MustCompile(`^UMR-\d{8}-[A-Z0-9]{4}$`).MatchString(nomor) {
+			t.Errorf("Unexpected nomor format: %s", nomor)
+		}
+	})
+
+	t.Run("GenerateNomorPendaftaranAt_RetriesOnCollisionThenSucceeds", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+		nomor, err := helpers.GenerateNomorPendaftaranAt(gdb, fixedDate)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if !pattern.MatchString(nomor) {
+			t.Errorf("Expected pattern UMR-20261029-XXXX, got %s", nomor)
+		}
+	})
+
+	t.Run("GenerateNomorPendaftaranAt_DatabaseError", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnError(errors.New("db query timeout"))
+
+		nomor, err := helpers.GenerateNomorPendaftaranAt(gdb, fixedDate)
+		if err == nil {
+			t.Fatal("Expected error when DB count fails")
+		}
+		if nomor != "" {
+			t.Errorf("Expected empty nomor on error, got %q", nomor)
+		}
+	})
+
+	t.Run("GenerateNomorPendaftaranAt_MaxRetriesExhausted", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+
+		for i := 0; i < helpers.MaxGenerateRetries; i++ {
+			mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
+				WithArgs(sqlmock.AnyArg()).
+				WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		}
+
+		nomor, err := helpers.GenerateNomorPendaftaranAt(gdb, fixedDate)
+		if err == nil {
+			t.Fatal("Expected error when MaxGenerateRetries is exhausted")
+		}
+		if !strings.Contains(err.Error(), "batas percobaan tercapai") {
+			t.Errorf("Unexpected error message: %v", err)
+		}
+		if nomor != "" {
+			t.Errorf("Expected empty nomor, got %q", nomor)
+		}
+	})
+
+	t.Run("GenerateNomorPendaftaranAt_CryptoRandFailure", func(t *testing.T) {
+		gdb, _, cleanup := newMockGormDB(t)
+		defer cleanup()
+
+		origReader := rand.Reader
+		rand.Reader = failingRandReader{}
+		defer func() { rand.Reader = origReader }()
+
+		nomor, err := helpers.GenerateNomorPendaftaranAt(gdb, fixedDate)
+		if err == nil {
+			t.Fatal("Expected error when crypto/rand fails")
+		}
+		if nomor != "" {
+			t.Errorf("Expected empty nomor, got %q", nomor)
+		}
+	})
+}
+
+func TestCreatePendaftaranWithRetry_UnitMockDB(t *testing.T) {
+	t.Run("Success_GeneratesNomorWhenEmptyAndUsesDefaultMaxRetries", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		p := &models.Pendaftaran{
+			CustomerNIK: "3201010101010001",
+			PaketID:     uuid.New(),
+			Status:      helpers.StatusProses,
+			// TanggalDaftar zero -> fallback to time.Now()
+		}
+
+		// maxRetries <= 0 -> defaults to 5
+		if err := helpers.CreatePendaftaranWithRetry(gdb, p, 0); err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if p.NomorPendaftaran == "" {
+			t.Error("Expected NomorPendaftaran to be populated")
+		}
+	})
+
+	t.Run("Success_RetriesOnDuplicateKeyError", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+
+		// Attempt 1: p.NomorPendaftaran sudah diisi, langsung INSERT -> gagal karena 23505 duplicate key
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
+			WillReturnError(&pgconn.PgError{Code: "23505", Message: "duplicate key value violates unique constraint"})
+		mock.ExpectRollback()
+
+		// Attempt 2: GenerateNomorPendaftaranAt dipanggil -> Count = 0 -> INSERT sukses
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
+			WithArgs(sqlmock.AnyArg()).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		p := &models.Pendaftaran{
+			NomorPendaftaran: "UMR-20261029-COLL",
+			CustomerNIK:      "3201010101010001",
+			PaketID:          uuid.New(),
+			TanggalDaftar:    time.Date(2026, time.October, 29, 10, 0, 0, 0, time.UTC),
+		}
+
+		if err := helpers.CreatePendaftaranWithRetry(gdb, p, 3); err != nil {
+			t.Fatalf("Expected retry to succeed, got error: %v", err)
+		}
+		if p.NomorPendaftaran == "UMR-20261029-COLL" {
+			t.Error("Expected NomorPendaftaran to be regenerated after collision")
+		}
+	})
+
+	t.Run("Error_NonDuplicateErrorAbortsImmediately", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
+			WillReturnError(errors.New("foreign key constraint violation"))
+		mock.ExpectRollback()
+
+		p := &models.Pendaftaran{
+			NomorPendaftaran: "UMR-20261029-FK01",
+			CustomerNIK:      "3201010101010001",
+		}
+
+		err := helpers.CreatePendaftaranWithRetry(gdb, p, 3)
+		if err == nil || !strings.Contains(err.Error(), "foreign key constraint") {
+			t.Fatalf("Expected foreign key error, got: %v", err)
+		}
+	})
+
+	t.Run("Error_GenerateNomorFailsDuringCreate", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
+			WillReturnError(errors.New("count query failed"))
+
+		p := &models.Pendaftaran{
+			NomorPendaftaran: "",
+			CustomerNIK:      "3201010101010001",
+		}
+
+		err := helpers.CreatePendaftaranWithRetry(gdb, p, 2)
+		if err == nil {
+			t.Fatal("Expected error when GenerateNomorPendaftaranAt fails")
+		}
+	})
+
+	t.Run("Error_MaxRetriesExhaustedOnPersistentCollision", func(t *testing.T) {
+		gdb, mock, cleanup := newMockGormDB(t)
+		defer cleanup()
+
+		// Attempt 1 (pre-set nomor) -> duplicate key
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
+			WillReturnError(&pgconn.PgError{Code: "23505"})
+		mock.ExpectRollback()
+
+		// Attempt 2 -> generate nomor -> duplicate key
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
+			WillReturnError(&pgconn.PgError{Code: "23505"})
+		mock.ExpectRollback()
+
+		p := &models.Pendaftaran{
+			NomorPendaftaran: "UMR-20261029-DUP1",
+			CustomerNIK:      "3201010101010001",
+		}
+
+		err := helpers.CreatePendaftaranWithRetry(gdb, p, 2)
+		if err == nil || !strings.Contains(err.Error(), "gagal menyimpan pendaftaran setelah 2 percobaan") {
+			t.Fatalf("Expected max retries exhausted error, got: %v", err)
+		}
+	})
 }

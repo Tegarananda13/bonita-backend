@@ -193,6 +193,69 @@ func TestSharedNotificationTemplates(t *testing.T) {
 				t.Errorf("Expected %q in pembayaran plain-text email", expected)
 			}
 		}
+
+		// Cabang status ditolak & pending
+		htmlRejected, _ := BuildPembayaranEmail("Jamaah", "UMR-1", "INV-1", "Rp 5.000.000", "ditolak")
+		if !strings.Contains(htmlRejected, "#fef2f2") {
+			t.Error("Expected red badge background #fef2f2 for ditolak payment status")
+		}
+		htmlPending, _ := BuildPembayaranEmail("Jamaah", "UMR-1", "INV-1", "Rp 5.000.000", "pending")
+		if !strings.Contains(htmlPending, "#fef3c7") {
+			t.Error("Expected amber badge background #fef3c7 for pending payment status")
+		}
+	})
+
+	t.Run("PengaduanDefaultStatus_And_HTMLHelper", func(t *testing.T) {
+		htmlDefault := BuildPengaduanEmailHTML("Jamaah", "UMR-20261029-999", "menunggu")
+		if !strings.Contains(htmlDefault, "Pembaruan Status Pengaduan") {
+			t.Error("Expected default pengaduan title when status is not diproses/selesai")
+		}
+	})
+
+	t.Run("EmptyLogoFileReturnsError_And_SanitizeStandaloneDot", func(t *testing.T) {
+		tmpFile, err := os.CreateTemp("", "empty-logo-*.jpg")
+		if err != nil {
+			t.Fatalf("Failed to create temp file: %v", err)
+		}
+		_ = tmpFile.Close()
+		defer os.Remove(tmpFile.Name())
+
+		prevEnv := os.Getenv("BONITA_LOGO_PATH")
+		_ = os.Setenv("BONITA_LOGO_PATH", tmpFile.Name())
+		defer func() {
+			if prevEnv == "" {
+				_ = os.Unsetenv("BONITA_LOGO_PATH")
+			} else {
+				_ = os.Setenv("BONITA_LOGO_PATH", prevEnv)
+			}
+		}()
+
+		if _, _, err := LoadBonitaLogo(); err == nil {
+			t.Error("Expected error when logo file is 0 bytes")
+		}
+
+		// Test standalone dot sanitization & empty plainBody fallback in BuildMIMEEmail
+		mimeBytes := BuildMIMEEmail("from@bonita.com", "to@bonita.com", "Subj", "<html><body><p>Baris 1</p><p>.</p><p>Baris 2</p></body></html>", "", nil)
+		for _, line := range strings.Split(string(mimeBytes), "\r\n") {
+			if strings.TrimSpace(line) == "." {
+				t.Fatal("Found unsanitized standalone dot line in MIME output")
+			}
+		}
+	})
+
+	t.Run("SendEmail_ReturnsErrorWhenSMTPUnreachable", func(t *testing.T) {
+		prevHost := os.Getenv("EMAIL_HOST")
+		prevPort := os.Getenv("EMAIL_PORT")
+		_ = os.Setenv("EMAIL_HOST", "127.0.0.1")
+		_ = os.Setenv("EMAIL_PORT", "1")
+		defer func() {
+			_ = os.Setenv("EMAIL_HOST", prevHost)
+			_ = os.Setenv("EMAIL_PORT", prevPort)
+		}()
+
+		if err := SendEmail("to@bonita.com", "Test", "Body"); err == nil {
+			t.Error("Expected error when SMTP server is unreachable")
+		}
 	})
 }
 

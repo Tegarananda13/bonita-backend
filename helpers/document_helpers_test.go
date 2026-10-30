@@ -1,12 +1,15 @@
 package helpers_test
 
 import (
+	"regexp"
 	"testing"
 	"time"
 
+	"bonita-backend/config"
 	"bonita-backend/helpers"
 	"bonita-backend/models"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 )
 
@@ -339,4 +342,103 @@ func TestDocumentCompleteness_AliasesAndVariations(t *testing.T) {
 			t.Errorf("Expected IsDocumentLengkap=false when pending")
 		}
 	})
+
+	// Skenario hanya dokumen non-wajib yang diunggah -> belum_lengkap
+	t.Run("OnlyNonRequiredDocumentsUploaded", func(t *testing.T) {
+		docs := []models.Dokumen{
+			makeDoc("lainnya", helpers.PaymentVerificationDiterima, now),
+			makeDoc("visa", helpers.PaymentVerificationDiterima, now),
+		}
+		if status := helpers.CalculateDocumentStatus(docs); status != helpers.DocumentBelumLengkap {
+			t.Errorf("Expected DocumentBelumLengkap ('belum_lengkap'), got '%s'", status)
+		}
+	})
+}
+
+func TestNormalizeRequiredDocType_TableDriven(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"paspor", "paspor"},
+		{"passport", "paspor"},
+		{"  PASPOR  ", "paspor"},
+		{"ktp", "ktp"},
+		{"KTP", "ktp"},
+		{"kartu_keluarga", "kartu_keluarga"},
+		{"kartu-keluarga", "kartu_keluarga"},
+		{"kartu keluarga", "kartu_keluarga"},
+		{"kk", "kartu_keluarga"},
+		{"akta_lahir", "akta_lahir"},
+		{"akte_kelahiran", "akta_lahir"},
+		{"akta", "akta_lahir"},
+		{"aktalahir", "akta_lahir"},
+		{"akte", "akta_lahir"},
+		{"vaksin", "vaksin"},
+		{"vaksinasi", "vaksin"},
+		{"vaccine", "vaksin"},
+		{"pas_foto", "pas_foto"},
+		{"pas-foto", "pas_foto"},
+		{"pas foto", "pas_foto"},
+		{"foto", "pas_foto"},
+		{"pasfoto", "pas_foto"},
+		{"pas_photo", "pas_foto"},
+		{"photo", "pas_foto"},
+		{"lainnya", ""},
+		{"visa", ""},
+		{"tiket_pesawat", ""},
+		{"nusuk", ""},
+		{"", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run("Input_"+tc.input, func(t *testing.T) {
+			got := helpers.NormalizeRequiredDocType(tc.input)
+			if got != tc.want {
+				t.Errorf("NormalizeRequiredDocType(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRecalcDocumentStatus_WithMockDB(t *testing.T) {
+	gdb, mock, cleanup := newMockGormDB(t)
+	defer cleanup()
+
+	prevDB := config.DB
+	config.DB = gdb
+	defer func() { config.DB = prevDB }()
+
+	nomor := "UMR-20261029-DOC1"
+	now := time.Now()
+
+	// 1. Query dokumen pada RecalcDocumentStatus
+	docRows := sqlmock.NewRows([]string{"id", "nomor_pendaftaran", "jenis_dokumen", "status_validasi", "created_at"})
+	for _, jenis := range []string{"paspor", "ktp", "kartu_keluarga", "akta_lahir", "vaksin", "pas_foto"} {
+		docRows.AddRow(uuid.New(), nomor, jenis, helpers.PaymentVerificationDiterima, now)
+	}
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "dokumen" WHERE nomor_pendaftaran = $1 ORDER BY created_at ASC`)).
+		WithArgs(nomor).
+		WillReturnRows(docRows)
+
+	// 2. Update document_status pada pendaftaran
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "pendaftaran" SET "document_status"=$1 WHERE nomor_pendaftaran = $2`)).
+		WithArgs(helpers.DocumentLengkap, nomor).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	// 3. UpdateStatusPendaftaran -> SyncPendaftaranStatusByNomor -> First pendaftaran (simulasi tidak ditemukan agar selesai bersih)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+		WithArgs(nomor, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran"}))
+
+	gotStatus := helpers.RecalcDocumentStatus(nomor)
+	if gotStatus != helpers.DocumentLengkap {
+		t.Errorf("RecalcDocumentStatus() = %q, want %q", gotStatus, helpers.DocumentLengkap)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unmet sqlmock expectations: %v", err)
+	}
 }
