@@ -119,14 +119,28 @@ func GetDetailPembayaran(c *gin.Context) {
 		jamaahList = []gin.H{}
 	}
 
+	normMetode, normBank, normSumber, metodeLabel := helpers.NormalizePembayaranMetadata(
+		pembayaran.MetodePembayaran,
+		pembayaran.BankTujuan,
+		pembayaran.SumberPembayaran,
+	)
+
 	c.JSON(http.StatusOK, gin.H{
 		"pembayaran": gin.H{
-			"ID":              pembayaran.ID,
-			"Jumlah":          pembayaran.Jumlah,
-			"TanggalBayar":    pembayaran.TanggalBayar,
-			"BuktiPembayaran": pembayaran.BuktiPembayaran,
-			"Status":          pembayaran.Status,
-			"AlasanPenolakan": pembayaran.AlasanPenolakan,
+			"ID":                pembayaran.ID,
+			"Jumlah":            pembayaran.Jumlah,
+			"TanggalBayar":      pembayaran.TanggalBayar,
+			"MetodePembayaran":  normMetode,
+			"metode_pembayaran": normMetode,
+			"BankTujuan":        normBank,
+			"bank_tujuan":       normBank,
+			"SumberPembayaran":  normSumber,
+			"sumber_pembayaran": normSumber,
+			"MetodeLabel":       metodeLabel,
+			"metode_label":      metodeLabel,
+			"BuktiPembayaran":   pembayaran.BuktiPembayaran,
+			"Status":            pembayaran.Status,
+			"AlasanPenolakan":   pembayaran.AlasanPenolakan,
 			"Invoice": gin.H{
 				"NomorInvoice":     pembayaran.Invoice.NomorInvoice,
 				"TotalTagihan":     pembayaran.Invoice.TotalTagihan,
@@ -173,12 +187,22 @@ func GetPendingPembayaran(c *gin.Context) {
 			}
 		}
 
+		normMetode, normBank, normSumber, metodeLabel := helpers.NormalizePembayaranMetadata(
+			p.MetodePembayaran,
+			p.BankTujuan,
+			p.SumberPembayaran,
+		)
+
 		result = append(result, gin.H{
 			"id":                 p.ID,
 			"nomor_pendaftaran":  nomorPendaftaran,
 			"nomor_invoice":      p.NomorInvoice,
 			"nama_customer":      namaCustomer,
 			"jumlah":             p.Jumlah,
+			"metode_pembayaran":  normMetode,
+			"bank_tujuan":        normBank,
+			"sumber_pembayaran":  normSumber,
+			"metode_label":       metodeLabel,
 			"status":             p.Status,
 			"tanggal_pembayaran": p.TanggalBayar,
 		})
@@ -245,9 +269,75 @@ func GetPendingPembayaran(c *gin.Context) {
 // ADMIN DETAIL PEMBAYARAN ACTIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
+// isAuthorizedAdminRole memastikan pemanggil endpoint pembayaran manual adalah Admin/Manager yang berwenang
+// dan bukan session customer atau role yang tidak memiliki izin.
+func isAuthorizedAdminRole(c *gin.Context) bool {
+	if _, isCustomer := c.Get("pendaftaran_id"); isCustomer {
+		return false
+	}
+	if roleVal, exists := c.Get("role"); exists {
+		roleStr, ok := roleVal.(string)
+		if !ok {
+			return false
+		}
+		switch strings.ToLower(strings.TrimSpace(roleStr)) {
+		case "admin", "owner", "manager", "administration_manager":
+			return true
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// extractAdminPaymentFields mengekstrak field input pembayaran manual Admin baik dari multipart/form-data,
+// application/x-www-form-urlencoded, maupun application/json.
+func extractAdminPaymentFields(c *gin.Context) (jumlahStr, tanggalStr, metodeStr, bankStr string, hasTanggal, hasMetode, hasBank bool) {
+	contentType := strings.ToLower(c.GetHeader("Content-Type"))
+	if strings.Contains(contentType, "application/json") {
+		var body map[string]interface{}
+		if err := c.ShouldBindJSON(&body); err == nil {
+			if v, ok := body["jumlah"]; ok && v != nil {
+				jumlahStr = fmt.Sprintf("%v", v)
+			}
+			if v, ok := body["tanggal_bayar"]; ok {
+				hasTanggal = true
+				if v != nil {
+					tanggalStr = fmt.Sprintf("%v", v)
+				}
+			}
+			if v, ok := body["metode_pembayaran"]; ok {
+				hasMetode = true
+				if v != nil {
+					metodeStr = fmt.Sprintf("%v", v)
+				}
+			}
+			if v, ok := body["bank_tujuan"]; ok {
+				hasBank = true
+				if v != nil {
+					bankStr = fmt.Sprintf("%v", v)
+				}
+			}
+		}
+		return
+	}
+
+	jumlahStr = c.PostForm("jumlah")
+	tanggalStr, hasTanggal = c.GetPostForm("tanggal_bayar")
+	metodeStr, hasMetode = c.GetPostForm("metode_pembayaran")
+	bankStr, hasBank = c.GetPostForm("bank_tujuan")
+	return
+}
+
 // AdminCreatePembayaran — POST /admin/pendaftaran/:nomor/pembayaran
-// Admin menambah pembayaran langsung; status otomatis "diterima".
+// Admin mencatat pembayaran manual (Transfer BSI/Mandiri/BCA atau Tunai);
+// status otomatis "diterima" dan sumber_pembayaran = "admin" tanpa antrean verifikasi.
 func AdminCreatePembayaran(c *gin.Context) {
+	if !isAuthorizedAdminRole(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Akses ditolak: hanya Admin yang dapat mencatat pembayaran manual"})
+		return
+	}
+
 	nomor := c.Param("nomor")
 
 	var pendaftaran models.Pendaftaran
@@ -266,20 +356,28 @@ func AdminCreatePembayaran(c *gin.Context) {
 
 	invoice := pendaftaran.Invoice
 
-	jumlahStr := c.PostForm("jumlah")
-	tanggalStr := c.PostForm("tanggal_bayar")
+	jumlahStr, tanggalStr, metodeStr, bankStr, hasTanggal, _, _ := extractAdminPaymentFields(c)
 
 	var jumlah float64
-	if _, err := fmt.Sscanf(jumlahStr, "%f", &jumlah); err != nil || jumlah <= 0 {
+	if _, err := fmt.Sscanf(strings.TrimSpace(jumlahStr), "%f", &jumlah); err != nil || helpers.ValidatePaymentNominal(jumlah) != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Jumlah pembayaran tidak valid"})
 		return
 	}
 
 	tanggalBayar := time.Now()
-	if tanggalStr != "" {
-		if t, err := time.Parse("2006-01-02", tanggalStr); err == nil {
-			tanggalBayar = t
+	if hasTanggal || strings.TrimSpace(tanggalStr) != "" {
+		parsedDate, err := helpers.ValidatePaymentDate(tanggalStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
+		tanggalBayar = parsedDate
+	}
+
+	normMetode, normBank, err := helpers.ValidatePaymentMethodAndBank(metodeStr, bankStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	var totalDiterima float64
@@ -300,10 +398,13 @@ func AdminCreatePembayaran(c *gin.Context) {
 	}
 
 	pembayaran := models.Pembayaran{
-		NomorInvoice: invoice.NomorInvoice,
-		Jumlah:       jumlah,
-		TanggalBayar: tanggalBayar,
-		Status:       helpers.PaymentVerificationDiterima,
+		NomorInvoice:     invoice.NomorInvoice,
+		Jumlah:           jumlah,
+		TanggalBayar:     tanggalBayar,
+		MetodePembayaran: normMetode,
+		BankTujuan:       normBank,
+		SumberPembayaran: helpers.SumberPembayaranAdmin,
+		Status:           helpers.PaymentVerificationDiterima,
 	}
 
 	if err := config.DB.Create(&pembayaran).Error; err != nil {
@@ -311,15 +412,17 @@ func AdminCreatePembayaran(c *gin.Context) {
 		return
 	}
 
-	// Upload bukti (opsional)
-	fileHeader, fileErr := c.FormFile("bukti")
-	if fileErr == nil {
-		if file, err := fileHeader.Open(); err == nil {
-			defer file.Close()
-			filename := fmt.Sprintf("%d_%s", time.Now().Unix(), fileHeader.Filename)
-			if fileURL, err := helpers.UploadToSupabase(file, filename, "pembayaran"); err == nil {
-				config.DB.Model(&pembayaran).Update("bukti_pembayaran", fileURL)
-				pembayaran.BuktiPembayaran = fileURL
+	// Upload bukti (opsional, hanya relevan untuk metode transfer)
+	if normMetode == helpers.MetodePembayaranTransfer && !strings.Contains(strings.ToLower(c.GetHeader("Content-Type")), "application/json") {
+		fileHeader, fileErr := c.FormFile("bukti")
+		if fileErr == nil {
+			if file, err := fileHeader.Open(); err == nil {
+				defer file.Close()
+				filename := fmt.Sprintf("%d_%s", time.Now().Unix(), fileHeader.Filename)
+				if fileURL, err := helpers.UploadToSupabase(file, filename, "pembayaran"); err == nil {
+					config.DB.Model(&pembayaran).Update("bukti_pembayaran", fileURL)
+					pembayaran.BuktiPembayaran = fileURL
+				}
 			}
 		}
 	}
@@ -329,16 +432,27 @@ func AdminCreatePembayaran(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Pembayaran berhasil ditambahkan",
 		"data": gin.H{
-			"id":     pembayaran.ID,
-			"jumlah": pembayaran.Jumlah,
-			"status": pembayaran.Status,
-			"bukti":  pembayaran.BuktiPembayaran,
+			"id":                pembayaran.ID,
+			"nomor_invoice":     pembayaran.NomorInvoice,
+			"jumlah":            pembayaran.Jumlah,
+			"tanggal_bayar":     pembayaran.TanggalBayar,
+			"metode_pembayaran": pembayaran.MetodePembayaran,
+			"bank_tujuan":       pembayaran.BankTujuan,
+			"sumber_pembayaran": pembayaran.SumberPembayaran,
+			"metode_label":      helpers.FormatPaymentMethodLabel(pembayaran.MetodePembayaran, pembayaran.BankTujuan),
+			"status":            pembayaran.Status,
+			"bukti":             pembayaran.BuktiPembayaran,
 		},
 	})
 }
 
 // AdminUpdatePembayaran — PUT /admin/pembayaran/:id/admin
 func AdminUpdatePembayaran(c *gin.Context) {
+	if !isAuthorizedAdminRole(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Akses ditolak: hanya Admin yang dapat mengubah pembayaran"})
+		return
+	}
+
 	pembayaranIDStr := c.Param("id")
 	pembayaranID, err := uuid.Parse(pembayaranIDStr)
 	if err != nil {
@@ -352,29 +466,53 @@ func AdminUpdatePembayaran(c *gin.Context) {
 		return
 	}
 
-	jumlahStr := c.PostForm("jumlah")
-	tanggalStr := c.PostForm("tanggal_bayar")
+	jumlahStr, tanggalStr, metodeStr, bankStr, hasTanggal, hasMetode, hasBank := extractAdminPaymentFields(c)
 
-	if jumlahStr != "" {
+	if strings.TrimSpace(jumlahStr) != "" {
 		var jumlah float64
-		if _, err := fmt.Sscanf(jumlahStr, "%f", &jumlah); err == nil && jumlah > 0 {
-			pembayaran.Jumlah = jumlah
+		if _, err := fmt.Sscanf(strings.TrimSpace(jumlahStr), "%f", &jumlah); err != nil || helpers.ValidatePaymentNominal(jumlah) != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Jumlah pembayaran tidak valid"})
+			return
 		}
+		pembayaran.Jumlah = jumlah
 	}
 
-	if tanggalStr != "" {
-		if t, err := time.Parse("2006-01-02", tanggalStr); err == nil {
-			pembayaran.TanggalBayar = t
+	if hasTanggal || strings.TrimSpace(tanggalStr) != "" {
+		t, err := helpers.ValidatePaymentDate(tanggalStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
+		pembayaran.TanggalBayar = t
 	}
 
-	fileHeader, fileErr := c.FormFile("bukti")
-	if fileErr == nil {
-		if file, err := fileHeader.Open(); err == nil {
-			defer file.Close()
-			filename := fmt.Sprintf("%d_%s", time.Now().Unix(), fileHeader.Filename)
-			if fileURL, err := helpers.UploadToSupabase(file, filename, "pembayaran"); err == nil {
-				pembayaran.BuktiPembayaran = fileURL
+	if hasMetode || hasBank {
+		targetMetode := metodeStr
+		if !hasMetode {
+			targetMetode = pembayaran.MetodePembayaran
+		}
+		targetBank := bankStr
+		if !hasBank && strings.ToLower(strings.TrimSpace(targetMetode)) != helpers.MetodePembayaranTunai {
+			targetBank = pembayaran.BankTujuan
+		}
+		normMetode, normBank, err := helpers.ValidatePaymentMethodAndBank(targetMetode, targetBank)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		pembayaran.MetodePembayaran = normMetode
+		pembayaran.BankTujuan = normBank
+	}
+
+	if !strings.Contains(strings.ToLower(c.GetHeader("Content-Type")), "application/json") {
+		fileHeader, fileErr := c.FormFile("bukti")
+		if fileErr == nil {
+			if file, err := fileHeader.Open(); err == nil {
+				defer file.Close()
+				filename := fmt.Sprintf("%d_%s", time.Now().Unix(), fileHeader.Filename)
+				if fileURL, err := helpers.UploadToSupabase(file, filename, "pembayaran"); err == nil {
+					pembayaran.BuktiPembayaran = fileURL
+				}
 			}
 		}
 	}
@@ -386,13 +524,23 @@ func AdminUpdatePembayaran(c *gin.Context) {
 
 	helpers.SyncPendaftaranStatus(pembayaran.NomorInvoice)
 
+	normMetode, normBank, normSumber, metodeLabel := helpers.NormalizePembayaranMetadata(
+		pembayaran.MetodePembayaran,
+		pembayaran.BankTujuan,
+		pembayaran.SumberPembayaran,
+	)
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Pembayaran berhasil diupdate",
 		"data": gin.H{
-			"id":     pembayaran.ID,
-			"jumlah": pembayaran.Jumlah,
-			"status": pembayaran.Status,
-			"bukti":  pembayaran.BuktiPembayaran,
+			"id":                pembayaran.ID,
+			"jumlah":            pembayaran.Jumlah,
+			"metode_pembayaran": normMetode,
+			"bank_tujuan":       normBank,
+			"sumber_pembayaran": normSumber,
+			"metode_label":      metodeLabel,
+			"status":            pembayaran.Status,
+			"bukti":             pembayaran.BuktiPembayaran,
 		},
 	})
 }

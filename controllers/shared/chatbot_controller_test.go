@@ -1356,8 +1356,8 @@ func TestChatbot_FlowRegistrasi(t *testing.T) {
 
 		// 5. Data alamat bertahap sampai ringkasan di ask_kode_pos
 		steps := []struct {
-			currentStep string
-			input       string
+			currentStep  string
+			input        string
 			expectedNext string
 		}{
 			{"ask_no_hp", "081298765432", "ask_email"},

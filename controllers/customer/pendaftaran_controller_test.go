@@ -119,21 +119,18 @@ func TestCreatePendaftaran(t *testing.T) {
 				AddRow(paketID, "Paket Reguler 12 Hari", 30000000.0, 45, 10, true, false, tBerangkat, 14))
 
 		// 4. GenerateNomorInvoice (check invoice uniqueness)
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "invoice" WHERE nomor_invoice = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 		// 5. Create Invoice
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "invoice"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 6. Create Customer
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "customer"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 7. GenerateNomorPendaftaran (check uniqueness in pendaftaran)
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
@@ -141,13 +138,10 @@ func TestCreatePendaftaran(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 		// 8. Create Pendaftaran
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 9. Update Kuota Paket
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "paket_umroh" SET "kuota_terpakai"=$1 WHERE "id" = $2`)).
 			WithArgs(11, paketID).
 			WillReturnResult(sqlmock.NewResult(1, 1))
@@ -157,20 +151,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": paketID.String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Ahmad Subagyo",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1990-12-12",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567890",
-					"email":               "ahmad@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi No. 10",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Kota Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Ahmad Subagyo",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1990-12-12",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567890",
+					"email":              "ahmad@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi No. 10",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Kota Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -246,46 +240,36 @@ func TestCreatePendaftaran(t *testing.T) {
 				AddRow(paketID, "Paket VIP Ramadhan", 40000000.0, 50, 0, true, false, tBerangkat, 30))
 
 		// 4. GenerateNomorInvoice
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "invoice" WHERE nomor_invoice = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 		// 5. Create Invoice
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "invoice"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 6. Create Customer 1 & 2
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "customer"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "customer"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 7. Generate & Create Pendaftaran 1 & 2
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 8. Update Kuota Paket (0 + 2 = 2)
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "paket_umroh" SET "kuota_terpakai"=$1 WHERE "id" = $2`)).
 			WithArgs(2, paketID).
 			WillReturnResult(sqlmock.NewResult(1, 1))
@@ -295,36 +279,36 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": paketID.String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik1,
-					"nama":                "Jamaah Satu",
-					"tempat_lahir":        "Jakarta",
-					"tanggal_lahir":       "1985-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081111111111",
-					"email":               "jamaah1@example.com",
-					"alamat_lengkap":      "Jl. Sudirman",
-					"provinsi":            "DKI Jakarta",
-					"kabupaten_kota":      "Jakarta Selatan",
-					"kecamatan":           "Setiabudi",
-					"kelurahan_desa":      "Karet",
-					"kode_pos":            "12920",
-					"ambil_perlengkapan":  true, // Mengambil perlengkapan
+					"nik":                nik1,
+					"nama":               "Jamaah Satu",
+					"tempat_lahir":       "Jakarta",
+					"tanggal_lahir":      "1985-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081111111111",
+					"email":              "jamaah1@example.com",
+					"alamat_lengkap":     "Jl. Sudirman",
+					"provinsi":           "DKI Jakarta",
+					"kabupaten_kota":     "Jakarta Selatan",
+					"kecamatan":          "Setiabudi",
+					"kelurahan_desa":     "Karet",
+					"kode_pos":           "12920",
+					"ambil_perlengkapan": true, // Mengambil perlengkapan
 				},
 				{
-					"nik":                 nik2,
-					"nama":                "Jamaah Dua",
-					"tempat_lahir":        "Jakarta",
-					"tanggal_lahir":       "1988-02-02",
-					"jenis_kelamin":       "P",
-					"no_hp":               "082222222222",
-					"email":               "jamaah2@example.com",
-					"alamat_lengkap":      "Jl. Sudirman",
-					"provinsi":            "DKI Jakarta",
-					"kabupaten_kota":      "Jakarta Selatan",
-					"kecamatan":           "Setiabudi",
-					"kelurahan_desa":      "Karet",
-					"kode_pos":            "12920",
-					"ambil_perlengkapan":  false,
+					"nik":                nik2,
+					"nama":               "Jamaah Dua",
+					"tempat_lahir":       "Jakarta",
+					"tanggal_lahir":      "1988-02-02",
+					"jenis_kelamin":      "P",
+					"no_hp":              "082222222222",
+					"email":              "jamaah2@example.com",
+					"alamat_lengkap":     "Jl. Sudirman",
+					"provinsi":           "DKI Jakarta",
+					"kabupaten_kota":     "Jakarta Selatan",
+					"kecamatan":          "Setiabudi",
+					"kelurahan_desa":     "Karet",
+					"kode_pos":           "12920",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -395,31 +379,25 @@ func TestCreatePendaftaran(t *testing.T) {
 				AddRow(paketID, "Paket Bronze", 28000000.0, 30, 5, true, false, time.Now().AddDate(0, 1, 0), 7))
 
 		// 5. Generate Invoice
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "invoice" WHERE nomor_invoice = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "invoice"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 6. Create Customer
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "customer"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 7. Generate & Create Pendaftaran
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 8. Update Kuota Paket
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "paket_umroh" SET "kuota_terpakai"=$1 WHERE "id" = $2`)).
 			WithArgs(6, paketID).
 			WillReturnResult(sqlmock.NewResult(1, 1))
@@ -430,20 +408,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"registration_source": "admin",
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Terdaftar Admin",
-					"tempat_lahir":        "Surabaya",
-					"tanggal_lahir":       "1992-05-10",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567899",
-					"email":               "adminreg@example.com",
-					"alamat_lengkap":      "Jl. Basuki Rahmat",
-					"provinsi":            "Jawa Timur",
-					"kabupaten_kota":      "Surabaya",
-					"kecamatan":           "Tegalsari",
-					"kelurahan_desa":      "Dr. Soetomo",
-					"kode_pos":            "60264",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Terdaftar Admin",
+					"tempat_lahir":       "Surabaya",
+					"tanggal_lahir":      "1992-05-10",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567899",
+					"email":              "adminreg@example.com",
+					"alamat_lengkap":     "Jl. Basuki Rahmat",
+					"provinsi":           "Jawa Timur",
+					"kabupaten_kota":     "Surabaya",
+					"kecamatan":          "Tegalsari",
+					"kelurahan_desa":     "Dr. Soetomo",
+					"kode_pos":           "60264",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -490,31 +468,25 @@ func TestCreatePendaftaran(t *testing.T) {
 				AddRow(paketID, "Paket Chatbot", 25000000.0, 20, 0, true, false, time.Now().AddDate(0, 1, 0), 5))
 
 		// 4. Generate Invoice
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "invoice" WHERE nomor_invoice = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "invoice"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 5. Create Customer
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "customer"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 6. Generate & Create Pendaftaran
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 7. Update Kuota Paket
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "paket_umroh" SET "kuota_terpakai"=$1 WHERE "id" = $2`)).
 			WithArgs(1, paketID).
 			WillReturnResult(sqlmock.NewResult(1, 1))
@@ -525,20 +497,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"registration_source": "chatbot",
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Chatbot",
-					"tempat_lahir":        "Semarang",
-					"tanggal_lahir":       "1994-04-04",
-					"jenis_kelamin":       "P",
-					"no_hp":               "081234567888",
-					"email":               "chatbot@example.com",
-					"alamat_lengkap":      "Jl. Pandanaran",
-					"provinsi":            "Jawa Tengah",
-					"kabupaten_kota":      "Semarang",
-					"kecamatan":           "Semarang Tengah",
-					"kelurahan_desa":      "Pekunden",
-					"kode_pos":            "50134",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Chatbot",
+					"tempat_lahir":       "Semarang",
+					"tanggal_lahir":      "1994-04-04",
+					"jenis_kelamin":      "P",
+					"no_hp":              "081234567888",
+					"email":              "chatbot@example.com",
+					"alamat_lengkap":     "Jl. Pandanaran",
+					"provinsi":           "Jawa Tengah",
+					"kabupaten_kota":     "Semarang",
+					"kecamatan":          "Semarang Tengah",
+					"kelurahan_desa":     "Pekunden",
+					"kode_pos":           "50134",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -584,41 +556,33 @@ func TestCreatePendaftaran(t *testing.T) {
 				AddRow(paketID, "Paket Retry", 29000000.0, 10, 0, true, false, time.Now().AddDate(0, 1, 0), 7))
 
 		// 4. Generate Invoice
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "invoice" WHERE nomor_invoice = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "invoice"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 5. Create Customer
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "customer"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 6. Percobaan pertama CreatePendaftaran With Retry:
 		// Check uniqueness lolos, tapi saat INSERT terjadi duplicate key constraint (23505)
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
 			WillReturnError(errors.New("ERROR: duplicate key value violates unique constraint \"pendaftaran_pkey\" (SQLSTATE 23505)"))
-		mock.ExpectRollback()
 
 		// Percobaan kedua (retry): Check uniqueness nomor baru lolos, INSERT berhasil
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// 7. Update Kuota Paket
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "paket_umroh" SET "kuota_terpakai"=$1 WHERE "id" = $2`)).
 			WithArgs(1, paketID).
 			WillReturnResult(sqlmock.NewResult(1, 1))
@@ -628,20 +592,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": paketID.String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Retry Unik",
-					"tempat_lahir":        "Solo",
-					"tanggal_lahir":       "1991-03-03",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567777",
-					"email":               "retry@example.com",
-					"alamat_lengkap":      "Jl. Slamet Riyadi",
-					"provinsi":            "Jawa Tengah",
-					"kabupaten_kota":      "Surakarta",
-					"kecamatan":           "Laweyan",
-					"kelurahan_desa":      "Purwosari",
-					"kode_pos":            "57142",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Retry Unik",
+					"tempat_lahir":       "Solo",
+					"tanggal_lahir":      "1991-03-03",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567777",
+					"email":              "retry@example.com",
+					"alamat_lengkap":     "Jl. Slamet Riyadi",
+					"provinsi":           "Jawa Tengah",
+					"kabupaten_kota":     "Surakarta",
+					"kecamatan":          "Laweyan",
+					"kelurahan_desa":     "Purwosari",
+					"kode_pos":           "57142",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -703,20 +667,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": uuid.New().String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 "12345", // Bukan 16 digit
-					"nama":                "Jamaah Pendek NIK",
-					"tempat_lahir":        "Solo",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567890",
-					"email":               "pendek@example.com",
-					"alamat_lengkap":      "Jl. Melati",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Coblong",
-					"kelurahan_desa":      "Dago",
-					"kode_pos":            "40135",
-					"ambil_perlengkapan":  false,
+					"nik":                "12345", // Bukan 16 digit
+					"nama":               "Jamaah Pendek NIK",
+					"tempat_lahir":       "Solo",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567890",
+					"email":              "pendek@example.com",
+					"alamat_lengkap":     "Jl. Melati",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Coblong",
+					"kelurahan_desa":     "Dago",
+					"kode_pos":           "40135",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -741,20 +705,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": uuid.New().String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 "320101123456789A", // Mengandung huruf 'A'
-					"nama":                "Jamaah Alfanumerik NIK",
-					"tempat_lahir":        "Solo",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567890",
-					"email":               "alfa@example.com",
-					"alamat_lengkap":      "Jl. Melati",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Coblong",
-					"kelurahan_desa":      "Dago",
-					"kode_pos":            "40135",
-					"ambil_perlengkapan":  false,
+					"nik":                "320101123456789A", // Mengandung huruf 'A'
+					"nama":               "Jamaah Alfanumerik NIK",
+					"tempat_lahir":       "Solo",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567890",
+					"email":              "alfa@example.com",
+					"alamat_lengkap":     "Jl. Melati",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Coblong",
+					"kelurahan_desa":     "Dago",
+					"kode_pos":           "40135",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -787,36 +751,36 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": uuid.New().String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nikDuplikat,
-					"nama":                "Jamaah Kembar 1",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1995-05-05",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567801",
-					"email":               "kembar1@example.com",
-					"alamat_lengkap":      "Jl. Dago",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Coblong",
-					"kelurahan_desa":      "Dago",
-					"kode_pos":            "40135",
-					"ambil_perlengkapan":  false,
+					"nik":                nikDuplikat,
+					"nama":               "Jamaah Kembar 1",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1995-05-05",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567801",
+					"email":              "kembar1@example.com",
+					"alamat_lengkap":     "Jl. Dago",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Coblong",
+					"kelurahan_desa":     "Dago",
+					"kode_pos":           "40135",
+					"ambil_perlengkapan": false,
 				},
 				{
-					"nik":                 nikDuplikat, // Duplikat dalam request
-					"nama":                "Jamaah Kembar 2",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1995-05-05",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567802",
-					"email":               "kembar2@example.com",
-					"alamat_lengkap":      "Jl. Dago",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Coblong",
-					"kelurahan_desa":      "Dago",
-					"kode_pos":            "40135",
-					"ambil_perlengkapan":  false,
+					"nik":                nikDuplikat, // Duplikat dalam request
+					"nama":               "Jamaah Kembar 2",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1995-05-05",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567802",
+					"email":              "kembar2@example.com",
+					"alamat_lengkap":     "Jl. Dago",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Coblong",
+					"kelurahan_desa":     "Dago",
+					"kode_pos":           "40135",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -850,20 +814,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": uuid.New().String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nikExisting,
-					"nama":                "Jamaah Yang Sudah Ada",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567800",
-					"email":               "exist@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nikExisting,
+					"nama":               "Jamaah Yang Sudah Ada",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567800",
+					"email":              "exist@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -901,20 +865,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": uuid.New().String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Future",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       time.Now().AddDate(1, 0, 0).Format("2006-01-02"), // 1 tahun ke depan
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567800",
-					"email":               "future@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Future",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      time.Now().AddDate(1, 0, 0).Format("2006-01-02"), // 1 tahun ke depan
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567800",
+					"email":              "future@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -947,20 +911,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": "bukan-uuid-valid",
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Test",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567800",
-					"email":               "test@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Test",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567800",
+					"email":              "test@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -995,28 +959,30 @@ func TestCreatePendaftaran(t *testing.T) {
 
 		mockSyncFinishedPaket(mock, false)
 
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "paket_umroh" WHERE id = $1 ORDER BY "paket_umroh"."id" LIMIT $2`)).
 			WithArgs(paketID, 1).
 			WillReturnError(sql.ErrNoRows)
+		mock.ExpectRollback()
 
 		reqBody := map[string]interface{}{
 			"paket_id": paketID.String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Paket Gaib",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567800",
-					"email":               "gaib@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Paket Gaib",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567800",
+					"email":              "gaib@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -1051,29 +1017,31 @@ func TestCreatePendaftaran(t *testing.T) {
 
 		mockSyncFinishedPaket(mock, false)
 
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "paket_umroh" WHERE id = $1 ORDER BY "paket_umroh"."id" LIMIT $2`)).
 			WithArgs(paketID, 1).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "nama_paket", "is_finished", "is_active"}).
 				AddRow(paketID, "Paket Selesai", true, false))
+		mock.ExpectRollback()
 
 		reqBody := map[string]interface{}{
 			"paket_id": paketID.String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Paket Selesai",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567800",
-					"email":               "selesai@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Paket Selesai",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567800",
+					"email":              "selesai@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -1108,29 +1076,31 @@ func TestCreatePendaftaran(t *testing.T) {
 
 		mockSyncFinishedPaket(mock, false)
 
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "paket_umroh" WHERE id = $1 ORDER BY "paket_umroh"."id" LIMIT $2`)).
 			WithArgs(paketID, 1).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "nama_paket", "is_finished", "is_active"}).
 				AddRow(paketID, "Paket Nonaktif", false, false))
+		mock.ExpectRollback()
 
 		reqBody := map[string]interface{}{
 			"paket_id": paketID.String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Paket Nonaktif",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567800",
-					"email":               "nonaktif@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Paket Nonaktif",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567800",
+					"email":              "nonaktif@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -1167,29 +1137,31 @@ func TestCreatePendaftaran(t *testing.T) {
 
 		// Tanggal berangkat 5 hari ke depan, tapi batas pendaftaran 7 hari sebelumnya -> pendaftaran sudah lewat deadline
 		tBerangkat := time.Now().AddDate(0, 0, 5)
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "paket_umroh" WHERE id = $1 ORDER BY "paket_umroh"."id" LIMIT $2`)).
 			WithArgs(paketID, 1).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "nama_paket", "is_finished", "is_active", "tanggal_berangkat", "batas_pendaftaran"}).
 				AddRow(paketID, "Paket Tutup", false, true, tBerangkat, 7))
+		mock.ExpectRollback()
 
 		reqBody := map[string]interface{}{
 			"paket_id": paketID.String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Telat Daftar",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567800",
-					"email":               "telat@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Telat Daftar",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567800",
+					"email":              "telat@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -1226,29 +1198,31 @@ func TestCreatePendaftaran(t *testing.T) {
 
 		// Kuota max 20, kuota terpakai sudah 20
 		tBerangkat := time.Now().AddDate(0, 2, 0)
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "paket_umroh" WHERE id = $1 ORDER BY "paket_umroh"."id" LIMIT $2`)).
 			WithArgs(paketID, 1).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "nama_paket", "is_finished", "is_active", "tanggal_berangkat", "batas_pendaftaran", "kuota_max", "kuota_terpakai"}).
 				AddRow(paketID, "Paket Penuh", false, true, tBerangkat, 7, 20, 20))
+		mock.ExpectRollback()
 
 		reqBody := map[string]interface{}{
 			"paket_id": paketID.String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Kuota Penuh",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567800",
-					"email":               "penuh@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Kuota Penuh",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567800",
+					"email":              "penuh@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -1290,12 +1264,12 @@ func TestCreatePendaftaran(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id", "nama_paket", "harga", "kuota_max", "kuota_terpakai", "is_active", "is_finished", "tanggal_berangkat", "batas_pendaftaran"}).
 				AddRow(paketID, "Paket Error Invoice", 30000000.0, 40, 0, true, false, time.Now().AddDate(0, 2, 0), 10))
 
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "invoice" WHERE nomor_invoice = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 		// Gagal simpan invoice ke database
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "invoice"`)).
 			WillReturnError(errors.New("db error insert invoice"))
 		mock.ExpectRollback()
@@ -1304,20 +1278,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": paketID.String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Error Invoice",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567800",
-					"email":               "errinv@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Error Invoice",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567800",
+					"email":              "errinv@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -1357,17 +1331,15 @@ func TestCreatePendaftaran(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id", "nama_paket", "harga", "kuota_max", "kuota_terpakai", "is_active", "is_finished", "tanggal_berangkat", "batas_pendaftaran"}).
 				AddRow(paketID, "Paket Error Customer", 30000000.0, 40, 0, true, false, time.Now().AddDate(0, 2, 0), 10))
 
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "invoice" WHERE nomor_invoice = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "invoice"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// Gagal simpan customer
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "customer"`)).
 			WillReturnError(errors.New("db error insert customer"))
 		mock.ExpectRollback()
@@ -1376,20 +1348,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": paketID.String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Error Customer",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567800",
-					"email":               "errcust@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Error Customer",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567800",
+					"email":              "errcust@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}
@@ -1429,26 +1401,22 @@ func TestCreatePendaftaran(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id", "nama_paket", "harga", "kuota_max", "kuota_terpakai", "is_active", "is_finished", "tanggal_berangkat", "batas_pendaftaran"}).
 				AddRow(paketID, "Paket Error Pendaftaran", 30000000.0, 40, 0, true, false, time.Now().AddDate(0, 2, 0), 10))
 
+		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "invoice" WHERE nomor_invoice = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "invoice"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "customer"`)).
 			WillReturnResult(sqlmock.NewResult(1, 1))
-		mock.ExpectCommit()
 
 		// Generate check lolos tapi insert gagal karena error disk/database fatal (bukan duplicate key)
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "pendaftaran" WHERE nomor_pendaftaran = $1`)).
 			WithArgs(sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
-		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pendaftaran"`)).
 			WillReturnError(errors.New("fatal I/O error writing pendaftaran"))
 		mock.ExpectRollback()
@@ -1457,20 +1425,20 @@ func TestCreatePendaftaran(t *testing.T) {
 			"paket_id": paketID.String(),
 			"jamaah": []map[string]interface{}{
 				{
-					"nik":                 nik,
-					"nama":                "Jamaah Error Pendaftaran",
-					"tempat_lahir":        "Bandung",
-					"tanggal_lahir":       "1990-01-01",
-					"jenis_kelamin":       "L",
-					"no_hp":               "081234567800",
-					"email":               "errpend@example.com",
-					"alamat_lengkap":      "Jl. Sukajadi",
-					"provinsi":            "Jawa Barat",
-					"kabupaten_kota":      "Bandung",
-					"kecamatan":           "Sukajadi",
-					"kelurahan_desa":      "Pasteur",
-					"kode_pos":            "40161",
-					"ambil_perlengkapan":  false,
+					"nik":                nik,
+					"nama":               "Jamaah Error Pendaftaran",
+					"tempat_lahir":       "Bandung",
+					"tanggal_lahir":      "1990-01-01",
+					"jenis_kelamin":      "L",
+					"no_hp":              "081234567800",
+					"email":              "errpend@example.com",
+					"alamat_lengkap":     "Jl. Sukajadi",
+					"provinsi":           "Jawa Barat",
+					"kabupaten_kota":     "Bandung",
+					"kecamatan":          "Sukajadi",
+					"kelurahan_desa":     "Pasteur",
+					"kode_pos":           "40161",
+					"ambil_perlengkapan": false,
 				},
 			},
 		}

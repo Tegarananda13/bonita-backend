@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"gorm.io/gorm/clause"
 )
 
 // resolveRegistrationSource menentukan RegistrationSource dan RegisteredBy berdasarkan
@@ -138,7 +139,7 @@ func CreatePendaftaran(c *gin.Context) {
 		}
 	}
 
-	// ── Validasi paket ───────────────────────────────────────────────────────
+	// ── Validasi paket_id ────────────────────────────────────────────────────
 	paketID, err := uuid.Parse(req.PaketID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "paket_id tidak valid"})
@@ -147,20 +148,37 @@ func CreatePendaftaran(c *gin.Context) {
 
 	_ = helpers.SyncFinishedPaket()
 
+	// ── Transaksi Database untuk Seluruh Proses Pendaftaran ──────────────────
+	tx := config.DB.Begin()
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memulai transaksi pendaftaran"})
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		}
+	}()
+
+	// ── Kunci baris paket (Pessimistic Locking: SELECT ... FOR UPDATE) ───────
 	var paket models.PaketUmroh
-	if err := config.DB.First(&paket, "id = ?", paketID).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&paket, "id = ?", paketID).Error; err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Paket tidak ditemukan"})
 		return
 	}
 
 	// cek paket selesai — tidak tersedia untuk pendaftaran baru
 	if paket.IsFinished {
+		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Paket umroh sudah selesai dan tidak tersedia untuk pendaftaran."})
 		return
 	}
 
 	// cek paket nonaktif
 	if !paket.IsActive {
+		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Paket umroh tidak aktif dan tidak tersedia untuk pendaftaran."})
 		return
 	}
@@ -168,13 +186,15 @@ func CreatePendaftaran(c *gin.Context) {
 	// cek batas pendaftaran
 	batasDaftar := paket.TanggalBerangkat.AddDate(0, 0, -paket.BatasPendaftaran)
 	if time.Now().After(batasDaftar) {
+		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Pendaftaran untuk paket ini sudah ditutup"})
 		return
 	}
 
-	// cek kuota — harus cukup untuk semua jamaah
+	// cek kuota — harus cukup untuk semua jamaah (berdasarkan data kuota terkini yang terkunci)
 	jumlahJamaah := len(req.Jamaah)
 	if paket.KuotaTerpakai+jumlahJamaah > paket.KuotaMax {
+		tx.Rollback()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Kuota paket tidak mencukupi untuk seluruh jamaah"})
 		return
 	}
@@ -191,7 +211,7 @@ func CreatePendaftaran(c *gin.Context) {
 	}
 
 	// ── Buat Invoice ─────────────────────────────────────────────────────────
-	nomorInvoice, _ := helpers.GenerateNomorInvoice(config.DB)
+	nomorInvoice, _ := helpers.GenerateNomorInvoice(tx)
 	hargaPaketTotal := paket.Harga * float64(jumlahJamaah)
 	invoice := models.Invoice{
 		NomorInvoice:      nomorInvoice,
@@ -201,7 +221,8 @@ func CreatePendaftaran(c *gin.Context) {
 		TotalPembayaran:   0,
 		StatusPembayaran:  models.InvoiceStatusBelumBayar,
 	}
-	if err := config.DB.Create(&invoice).Error; err != nil {
+	if err := tx.Create(&invoice).Error; err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membuat invoice"})
 		return
 	}
@@ -232,7 +253,8 @@ func CreatePendaftaran(c *gin.Context) {
 			KodePos:       j.KodePos,
 			CreatedAt:     time.Now(),
 		}
-		if err := config.DB.Create(&customer).Error; err != nil {
+		if err := tx.Create(&customer).Error; err != nil {
+			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membuat data customer: " + j.Nama})
 			return
 		}
@@ -257,7 +279,8 @@ func CreatePendaftaran(c *gin.Context) {
 			TanggalDaftar:      time.Now(),
 			BatasWaktuDP:       time.Now().Add(24 * time.Hour),
 		}
-		if err := helpers.CreatePendaftaranWithRetry(config.DB, &pendaftaran, helpers.MaxGenerateRetries); err != nil {
+		if err := helpers.CreatePendaftaranWithRetry(tx, &pendaftaran, helpers.MaxGenerateRetries); err != nil {
+			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan pendaftaran: " + j.Nama})
 			return
 		}
@@ -269,13 +292,23 @@ func CreatePendaftaran(c *gin.Context) {
 	}
 
 	// ── Update kuota paket ───────────────────────────────────────────────────
-	if err := config.DB.Model(&paket).Update("kuota_terpakai", paket.KuotaTerpakai+jumlahJamaah).Error; err != nil {
-		// non-fatal
-		_ = err
+	kuotaBaru := paket.KuotaTerpakai + jumlahJamaah
+	if err := tx.Model(&paket).Update("kuota_terpakai", kuotaBaru).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui kuota paket"})
+		return
+	}
+
+	// ── Commit transaksi ─────────────────────────────────────────────────────
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memproses transaksi pendaftaran"})
+		return
 	}
 
 	// ── Response ─────────────────────────────────────────────────────────────
 	batasDP := time.Now().Add(24 * time.Hour)
+	kuotaTersisa := paket.KuotaMax - kuotaBaru
 	c.JSON(http.StatusCreated, gin.H{
 		"message":             "Pendaftaran berhasil",
 		"nomor_invoice":       nomorInvoice,
@@ -292,7 +325,7 @@ func CreatePendaftaran(c *gin.Context) {
 			"nama_customer":     results[0].Nama,
 			"paket":             paket.NamaPaket,
 			"status":            helpers.StatusProses,
-			"kuota_tersisa":     paket.KuotaMax - paket.KuotaTerpakai - jumlahJamaah,
+			"kuota_tersisa":     kuotaTersisa,
 			"batas_waktu_dp":    batasDP,
 		},
 	})

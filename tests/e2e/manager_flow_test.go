@@ -1,91 +1,20 @@
-package tests
+package e2e_test
 
 import (
 	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
 	"bonita-backend/config"
 	"bonita-backend/helpers"
 	"bonita-backend/models"
-	"bonita-backend/routes"
+	"bonita-backend/tests/testhelper"
 
-	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/joho/godotenv"
 )
-
-var testJWTKey = []byte("bonita-secret-key")
-
-func makeJWT(userID, role, nama string) string {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": userID,
-		"role":    role,
-		"nama":    nama,
-		"exp":     time.Now().Add(time.Hour * 2).Unix(),
-	})
-	str, _ := token.SignedString(testJWTKey)
-	return str
-}
-
-func setupTestApp(t *testing.T) (*gin.Engine, func()) {
-	_ = godotenv.Load("../.env")
-	_ = godotenv.Load(".env")
-
-	if os.Getenv("DB_HOST") == "" {
-		t.Skip("DB_HOST not set, skipping integration test")
-		return nil, func() {}
-	}
-
-	config.ConnectDatabase()
-	if config.DB == nil {
-		t.Skip("Database not connected, skipping integration test")
-		return nil, func() {}
-	}
-	config.Migrate()
-
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.Use(gin.Recovery())
-	routes.SetupRoutes(r)
-
-	return r, func() {}
-}
-
-func createTestUser(role, nama string) models.User {
-	u := models.User{
-		ID:        uuid.New(),
-		Nama:      nama,
-		Username:  "u_" + uuid.New().String()[:8],
-		Role:      role,
-		IsActive:  true,
-		CreatedAt: time.Now(),
-	}
-	config.DB.Create(&u)
-	return u
-}
-
-func createTestCustomer(prefix, nama string) models.Customer {
-	nik := prefix
-	if len(nik) > 10 {
-		nik = nik[:10] + uuid.New().String()[:6]
-	} else {
-		nik = nik + uuid.New().String()[:6]
-	}
-	c := models.Customer{
-		NIK:         nik,
-		Nama:        nama,
-		TempatLahir: "Jakarta",
-		CreatedAt:   time.Now(),
-	}
-	config.DB.Create(&c)
-	return c
-}
 
 func cleanupRegistration(nomor string, invNo string) {
 	config.DB.Where("nomor_pendaftaran = ?", nomor).Delete(&models.Dokumen{})
@@ -96,43 +25,16 @@ func cleanupRegistration(nomor string, invNo string) {
 	}
 }
 
-func createTestPaket() models.PaketUmroh {
-	p := models.PaketUmroh{
-		ID:               uuid.New(),
-		NamaPaket:        "Paket Test Manager " + uuid.New().String()[:6],
-		Harga:            25000000,
-		TanggalBerangkat: time.Now().AddDate(0, 1, 0),
-		Durasi:           9,
-		IsActive:         true,
-	}
-	config.DB.Create(&p)
-	return p
-}
-
-func createCompleteDocs(nomorPendaftaran string) {
-	for _, reqType := range helpers.RequiredDocTypes {
-		d := models.Dokumen{
-			ID:               uuid.New(),
-			NomorPendaftaran: nomorPendaftaran,
-			JenisDokumen:     reqType,
-			FilePath:         "https://example.com/test-" + reqType + ".pdf",
-			StatusValidasi:   helpers.PaymentVerificationDiterima,
-			CreatedAt:        time.Now(),
-		}
-		config.DB.Create(&d)
-	}
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Test Manager Approve
 // ─────────────────────────────────────────────────────────────────────────────
 func TestManagerApprove_Success(t *testing.T) {
-	router, teardown := setupTestApp(t)
+	router, teardown := testhelper.SetupTestApp(t)
 	defer teardown()
 
-	manager := createTestUser("owner", "Manager Budi")
-	cust := createTestCustomer("1111222233334444", "Jamaah Approved")
-	paket := createTestPaket()
+	manager := testhelper.CreateTestUser("owner", "Manager Budi")
+	cust := testhelper.CreateTestCustomer("1111222233334444", "Jamaah Approved")
+	paket := testhelper.CreateTestPaket()
 
 	invNo := "INV-APPR-" + uuid.New().String()[:8]
 	inv := models.Invoice{
@@ -164,10 +66,10 @@ func TestManagerApprove_Success(t *testing.T) {
 		config.DB.Delete(&manager)
 	}()
 
-	createCompleteDocs(nomor)
+	testhelper.CreateCompleteDocs(nomor)
 
 	// Manager approve call
-	managerToken := makeJWT(manager.ID.String(), "owner", manager.Nama)
+	managerToken := testhelper.MakeJWT(manager.ID.String(), "owner", manager.Nama)
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/manager/verifikasi/"+nomor+"/approve", nil)
 	req.Header.Set("Authorization", "Bearer "+managerToken)
@@ -195,16 +97,16 @@ func TestManagerApprove_Success(t *testing.T) {
 // 2. Test Manager Request Improvement
 // ─────────────────────────────────────────────────────────────────────────────
 func TestManagerMintaPerbaikan_Success(t *testing.T) {
-	router, teardown := setupTestApp(t)
+	router, teardown := testhelper.SetupTestApp(t)
 	defer teardown()
 
-	manager := createTestUser("owner", "Manager Ahmad")
+	manager := testhelper.CreateTestUser("owner", "Manager Ahmad")
 	defer config.DB.Delete(&manager)
 
-	cust := createTestCustomer("2222333344445555", "Jamaah Perbaikan")
+	cust := testhelper.CreateTestCustomer("2222333344445555", "Jamaah Perbaikan")
 	defer config.DB.Delete(&cust)
 
-	paket := createTestPaket()
+	paket := testhelper.CreateTestPaket()
 	defer config.DB.Delete(&paket)
 
 	invNo := "INV-PERB-" + uuid.New().String()[:8]
@@ -235,7 +137,7 @@ func TestManagerMintaPerbaikan_Success(t *testing.T) {
 	noteText := "Mohon periksa kembali masa berlaku paspor jamaah."
 	reqBody, _ := json.Marshal(map[string]string{"catatan": noteText})
 
-	managerToken := makeJWT(manager.ID.String(), "owner", manager.Nama)
+	managerToken := testhelper.MakeJWT(manager.ID.String(), "owner", manager.Nama)
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/manager/verifikasi/"+nomor+"/perbaikan", bytes.NewReader(reqBody))
 	req.Header.Set("Authorization", "Bearer "+managerToken)
@@ -261,16 +163,16 @@ func TestManagerMintaPerbaikan_Success(t *testing.T) {
 // 3. Test Catatan Kosong -> 400 Bad Request
 // ─────────────────────────────────────────────────────────────────────────────
 func TestManagerMintaPerbaikan_EmptyCatatan(t *testing.T) {
-	router, teardown := setupTestApp(t)
+	router, teardown := testhelper.SetupTestApp(t)
 	defer teardown()
 
-	manager := createTestUser("owner", "Manager Catatan")
+	manager := testhelper.CreateTestUser("owner", "Manager Catatan")
 	defer config.DB.Delete(&manager)
 
 	nomor := "UMR-EMPTY-" + uuid.New().String()[:8]
 	reqBody, _ := json.Marshal(map[string]string{"catatan": "   "})
 
-	managerToken := makeJWT(manager.ID.String(), "owner", manager.Nama)
+	managerToken := testhelper.MakeJWT(manager.ID.String(), "owner", manager.Nama)
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/manager/verifikasi/"+nomor+"/perbaikan", bytes.NewReader(reqBody))
 	req.Header.Set("Authorization", "Bearer "+managerToken)
@@ -286,14 +188,14 @@ func TestManagerMintaPerbaikan_EmptyCatatan(t *testing.T) {
 // 4. Test Admin Mencoba Approve -> 403 Forbidden
 // ─────────────────────────────────────────────────────────────────────────────
 func TestAdminTryApprove_Forbidden(t *testing.T) {
-	router, teardown := setupTestApp(t)
+	router, teardown := testhelper.SetupTestApp(t)
 	defer teardown()
 
-	adminUser := createTestUser("admin", "Admin Biasa")
+	adminUser := testhelper.CreateTestUser("admin", "Admin Biasa")
 	defer config.DB.Delete(&adminUser)
 
 	nomor := "UMR-FORB-" + uuid.New().String()[:8]
-	adminToken := makeJWT(adminUser.ID.String(), "admin", adminUser.Nama)
+	adminToken := testhelper.MakeJWT(adminUser.ID.String(), "admin", adminUser.Nama)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/manager/verifikasi/"+nomor+"/approve", nil)
@@ -309,7 +211,7 @@ func TestAdminTryApprove_Forbidden(t *testing.T) {
 // 5. Test Customer Mencoba Approve -> 401/403 Forbidden
 // ─────────────────────────────────────────────────────────────────────────────
 func TestCustomerTryApprove_Forbidden(t *testing.T) {
-	router, teardown := setupTestApp(t)
+	router, teardown := testhelper.SetupTestApp(t)
 	defer teardown()
 
 	nomor := "UMR-CUST-" + uuid.New().String()[:8]
@@ -329,16 +231,16 @@ func TestCustomerTryApprove_Forbidden(t *testing.T) {
 // 6. Test Approve ketika Dokumen Belum Lengkap -> 422, status tetap menunggu
 // ─────────────────────────────────────────────────────────────────────────────
 func TestApproveWhenDocsIncomplete(t *testing.T) {
-	router, teardown := setupTestApp(t)
+	router, teardown := testhelper.SetupTestApp(t)
 	defer teardown()
 
-	manager := createTestUser("owner", "Manager Docs")
+	manager := testhelper.CreateTestUser("owner", "Manager Docs")
 	defer config.DB.Delete(&manager)
 
-	cust := createTestCustomer("3333444455556666", "Jamaah Incomplete Docs")
+	cust := testhelper.CreateTestCustomer("3333444455556666", "Jamaah Incomplete Docs")
 	defer config.DB.Delete(&cust)
 
-	paket := createTestPaket()
+	paket := testhelper.CreateTestPaket()
 	defer config.DB.Delete(&paket)
 
 	invNo := "INV-INCDOC-" + uuid.New().String()[:8]
@@ -377,7 +279,7 @@ func TestApproveWhenDocsIncomplete(t *testing.T) {
 	config.DB.Create(&d)
 	defer config.DB.Delete(&d)
 
-	managerToken := makeJWT(manager.ID.String(), "owner", manager.Nama)
+	managerToken := testhelper.MakeJWT(manager.ID.String(), "owner", manager.Nama)
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/manager/verifikasi/"+nomor+"/approve", nil)
 	req.Header.Set("Authorization", "Bearer "+managerToken)
@@ -398,12 +300,12 @@ func TestApproveWhenDocsIncomplete(t *testing.T) {
 // 7. Test Approve ketika Pembayaran Belum Lunas -> 422, status tetap menunggu
 // ─────────────────────────────────────────────────────────────────────────────
 func TestApproveWhenPaymentNotLunas(t *testing.T) {
-	router, teardown := setupTestApp(t)
+	router, teardown := testhelper.SetupTestApp(t)
 	defer teardown()
 
-	manager := createTestUser("owner", "Manager Pay")
-	cust := createTestCustomer("4444555566667777", "Jamaah Unpaid")
-	paket := createTestPaket()
+	manager := testhelper.CreateTestUser("owner", "Manager Pay")
+	cust := testhelper.CreateTestCustomer("4444555566667777", "Jamaah Unpaid")
+	paket := testhelper.CreateTestPaket()
 
 	invNo := "INV-UNPAID-" + uuid.New().String()[:8]
 	inv := models.Invoice{
@@ -435,9 +337,9 @@ func TestApproveWhenPaymentNotLunas(t *testing.T) {
 		config.DB.Delete(&manager)
 	}()
 
-	createCompleteDocs(nomor)
+	testhelper.CreateCompleteDocs(nomor)
 
-	managerToken := makeJWT(manager.ID.String(), "owner", manager.Nama)
+	managerToken := testhelper.MakeJWT(manager.ID.String(), "owner", manager.Nama)
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/manager/verifikasi/"+nomor+"/approve", nil)
 	req.Header.Set("Authorization", "Bearer "+managerToken)
@@ -459,13 +361,13 @@ func TestApproveWhenPaymentNotLunas(t *testing.T) {
 // Menunggu Manager -> Perlu Perbaikan -> Admin memperbaiki -> Menunggu Manager -> Manager approve -> Siap Berangkat
 // ─────────────────────────────────────────────────────────────────────────────
 func TestFullRevisionCycle(t *testing.T) {
-	router, teardown := setupTestApp(t)
+	router, teardown := testhelper.SetupTestApp(t)
 	defer teardown()
 
-	manager := createTestUser("owner", "Manager Siklus")
-	admin := createTestUser("admin", "Admin Siklus")
-	cust := createTestCustomer("5555666677778888", "Jamaah Siklus")
-	paket := createTestPaket()
+	manager := testhelper.CreateTestUser("owner", "Manager Siklus")
+	admin := testhelper.CreateTestUser("admin", "Admin Siklus")
+	cust := testhelper.CreateTestCustomer("5555666677778888", "Jamaah Siklus")
+	paket := testhelper.CreateTestPaket()
 
 	invNo := "INV-CYCLE-" + uuid.New().String()[:8]
 	inv := models.Invoice{
@@ -498,10 +400,10 @@ func TestFullRevisionCycle(t *testing.T) {
 		config.DB.Delete(&manager)
 	}()
 
-	createCompleteDocs(nomor)
+	testhelper.CreateCompleteDocs(nomor)
 
-	managerToken := makeJWT(manager.ID.String(), "owner", manager.Nama)
-	adminToken := makeJWT(admin.ID.String(), "admin", admin.Nama)
+	managerToken := testhelper.MakeJWT(manager.ID.String(), "owner", manager.Nama)
+	adminToken := testhelper.MakeJWT(admin.ID.String(), "admin", admin.Nama)
 
 	// Step 1: Manager request improvement
 	reqBody, _ := json.Marshal(map[string]string{"catatan": "Paspor buram, mohon upload ulang"})
@@ -560,16 +462,16 @@ func TestFullRevisionCycle(t *testing.T) {
 // Jika 1 jamaah belum lengkap -> tidak boleh approve
 // ─────────────────────────────────────────────────────────────────────────────
 func TestGroupRegistration_ManagerVerification(t *testing.T) {
-	router, teardown := setupTestApp(t)
+	router, teardown := testhelper.SetupTestApp(t)
 	defer teardown()
 
-	manager := createTestUser("owner", "Manager Grup")
+	manager := testhelper.CreateTestUser("owner", "Manager Grup")
 
-	c1 := createTestCustomer("6666777788880001", "Jamaah Grup 1")
-	c2 := createTestCustomer("6666777788880002", "Jamaah Grup 2")
-	c3 := createTestCustomer("6666777788880003", "Jamaah Grup 3")
+	c1 := testhelper.CreateTestCustomer("6666777788880001", "Jamaah Grup 1")
+	c2 := testhelper.CreateTestCustomer("6666777788880002", "Jamaah Grup 2")
+	c3 := testhelper.CreateTestCustomer("6666777788880003", "Jamaah Grup 3")
 
-	paket := createTestPaket()
+	paket := testhelper.CreateTestPaket()
 
 	invNo := "INV-GRP-" + uuid.New().String()[:8]
 	inv := models.Invoice{
@@ -614,11 +516,11 @@ func TestGroupRegistration_ManagerVerification(t *testing.T) {
 	}
 	defer cleanup()
 
-	createCompleteDocs(nomor1)
-	createCompleteDocs(nomor2)
+	testhelper.CreateCompleteDocs(nomor1)
+	testhelper.CreateCompleteDocs(nomor2)
 	// pd3 belum lengkap
 
-	managerToken := makeJWT(manager.ID.String(), "owner", manager.Nama)
+	managerToken := testhelper.MakeJWT(manager.ID.String(), "owner", manager.Nama)
 
 	// Step A: Coba approve saat 1 jamaah belum lengkap -> harus ditolak 422
 	// Pertama sync status:
@@ -634,7 +536,7 @@ func TestGroupRegistration_ManagerVerification(t *testing.T) {
 	}
 
 	// Step B: Lengkapi jamaah 3
-	createCompleteDocs(nomor3)
+	testhelper.CreateCompleteDocs(nomor3)
 	helpers.SyncPendaftaranStatusByNomor(nomor3)
 
 	var g1, g2, g3 models.Pendaftaran
@@ -675,19 +577,19 @@ func TestGroupRegistration_ManagerVerification(t *testing.T) {
 }
 
 func TestAssignPendaftaran_RolePermissions(t *testing.T) {
-	router, cleanup := setupTestApp(t)
+	router, cleanup := testhelper.SetupTestApp(t)
 	defer cleanup()
 
-	admin1 := createTestUser("admin", "Admin Satu")
-	admin2 := createTestUser("admin", "Admin Dua")
-	manager := createTestUser("manager", "Administration Manager")
+	admin1 := testhelper.CreateTestUser("admin", "Admin Satu")
+	admin2 := testhelper.CreateTestUser("admin", "Admin Dua")
+	manager := testhelper.CreateTestUser("manager", "Administration Manager")
 
-	admin1Token := makeJWT(admin1.ID.String(), admin1.Role, admin1.Nama)
-	admin2Token := makeJWT(admin2.ID.String(), admin2.Role, admin2.Nama)
-	managerToken := makeJWT(manager.ID.String(), manager.Role, manager.Nama)
+	admin1Token := testhelper.MakeJWT(admin1.ID.String(), admin1.Role, admin1.Nama)
+	admin2Token := testhelper.MakeJWT(admin2.ID.String(), admin2.Role, admin2.Nama)
+	managerToken := testhelper.MakeJWT(manager.ID.String(), manager.Role, manager.Nama)
 
-	cust := createTestCustomer("9999000011112222", "Jamaah Assign Test")
-	paket := createTestPaket()
+	cust := testhelper.CreateTestCustomer("9999000011112222", "Jamaah Assign Test")
+	paket := testhelper.CreateTestPaket()
 
 	invNo := "INV-ASSIGN-" + uuid.New().String()[:8]
 	inv := models.Invoice{
@@ -777,18 +679,18 @@ func TestAssignPendaftaran_RolePermissions(t *testing.T) {
 }
 
 func TestAdminJamaahFilterAndCount(t *testing.T) {
-	router, cleanup := setupTestApp(t)
+	router, cleanup := testhelper.SetupTestApp(t)
 	defer cleanup()
 
-	admin1 := createTestUser("admin", "Admin Satu Jamaah")
-	admin2 := createTestUser("admin", "Admin Dua Jamaah")
-	manager := createTestUser("manager", "Administration Manager")
+	admin1 := testhelper.CreateTestUser("admin", "Admin Satu Jamaah")
+	admin2 := testhelper.CreateTestUser("admin", "Admin Dua Jamaah")
+	manager := testhelper.CreateTestUser("manager", "Administration Manager")
 
-	managerToken := makeJWT(manager.ID.String(), manager.Role, manager.Nama)
+	managerToken := testhelper.MakeJWT(manager.ID.String(), manager.Role, manager.Nama)
 
-	cust1 := createTestCustomer("1111222233334444", "Jamaah Admin Satu")
-	cust2 := createTestCustomer("5555666677778888", "Jamaah Admin Dua")
-	paket := createTestPaket()
+	cust1 := testhelper.CreateTestCustomer("1111222233334444", "Jamaah Admin Satu")
+	cust2 := testhelper.CreateTestCustomer("5555666677778888", "Jamaah Admin Dua")
+	paket := testhelper.CreateTestPaket()
 
 	invNo1 := "INV-J1-" + uuid.New().String()[:8]
 	inv1 := models.Invoice{
@@ -927,5 +829,444 @@ func TestAdminJamaahFilterAndCount(t *testing.T) {
 
 	if resJamaah1.TotalJamaah != 1 || len(resJamaah1.Data) != 1 || resJamaah1.Data[0].NomorPendaftaran != nomor1 {
 		t.Errorf("Expected /manager/admin/:id/jamaah to return 1 jamaah for admin1, got %+v", resJamaah1)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 12. Test E2E Alur Approval Lengkap: Antrean -> Inspeksi Detail -> Approve -> Verifikasi Tab -> Portal Jamaah
+// ─────────────────────────────────────────────────────────────────────────────
+func TestManagerE2E_FullApprovalFlow_QueueToInspectionToCustomerPortal(t *testing.T) {
+	router, teardown := testhelper.SetupTestApp(t)
+	defer teardown()
+
+	manager := testhelper.CreateTestUser("administration_manager", "Manager Alur E2E")
+	managerToken := testhelper.MakeJWT(manager.ID.String(), manager.Role, manager.Nama)
+
+	nik := testhelper.GenerateTestNIK(501)
+	cust := testhelper.CreateTestCustomer(nik, "Jamaah Alur E2E")
+	paket := testhelper.CreateTestPaket()
+
+	invNo := "INV-ALUR-" + uuid.New().String()[:8]
+	inv := models.Invoice{
+		NomorInvoice:      invNo,
+		TotalOrang:        1,
+		TotalTagihan:      paket.Harga,
+		TotalPembayaran:   paket.Harga,
+		StatusPembayaran:  models.InvoiceStatusLunas,
+		TotalPerlengkapan: 0,
+		CreatedAt:         time.Now(),
+	}
+	config.DB.Create(&inv)
+
+	pay := models.Pembayaran{
+		ID:               uuid.New(),
+		NomorInvoice:     invNo,
+		Jumlah:           paket.Harga,
+		MetodePembayaran: "transfer",
+		BankTujuan:       "BSI",
+		Status:           helpers.PaymentVerificationDiterima,
+		TanggalBayar:     time.Now().Add(-1 * time.Hour),
+	}
+	config.DB.Create(&pay)
+
+	nomor := "UMR-ALUR-" + uuid.New().String()[:8]
+	pd := models.Pendaftaran{
+		NomorPendaftaran: nomor,
+		CustomerNIK:      cust.NIK,
+		PaketID:          paket.ID,
+		NomorInvoice:     invNo,
+		DocumentStatus:   helpers.DocumentLengkap,
+		Status:           helpers.StatusMenungguVerifikasiManager,
+		TanggalDaftar:    time.Now().Add(-2 * time.Hour),
+	}
+	config.DB.Create(&pd)
+	testhelper.CreateCompleteDocs(nomor)
+
+	custToken, cleanupSession := testhelper.CreateTestCustomerSession(nomor)
+
+	defer func() {
+		cleanupSession()
+		cleanupRegistration(nomor, invNo)
+		config.DB.Delete(&cust)
+		config.DB.Delete(&paket)
+		config.DB.Delete(&manager)
+	}()
+
+	// ── Langkah 1: Manager Membuka Badges dan Antrean Verifikasi ──
+	wBadge := httptest.NewRecorder()
+	rBadge, _ := http.NewRequest("GET", "/manager/badges", nil)
+	rBadge.Header.Set("Authorization", "Bearer "+managerToken)
+	router.ServeHTTP(wBadge, rBadge)
+	if wBadge.Code != http.StatusOK {
+		t.Fatalf("Langkah 1 GET /manager/badges gagal: %d", wBadge.Code)
+	}
+
+	wQueue := httptest.NewRecorder()
+	rQueue, _ := http.NewRequest("GET", "/manager/verifikasi", nil)
+	rQueue.Header.Set("Authorization", "Bearer "+managerToken)
+	router.ServeHTTP(wQueue, rQueue)
+	if wQueue.Code != http.StatusOK {
+		t.Fatalf("Langkah 1 GET /manager/verifikasi gagal: %d", wQueue.Code)
+	}
+
+	var queueResp struct {
+		Data []map[string]interface{} `json:"data"`
+	}
+	_ = json.Unmarshal(wQueue.Body.Bytes(), &queueResp)
+	foundInQueue := false
+	for _, item := range queueResp.Data {
+		if item["nomor_pendaftaran"] == nomor {
+			foundInQueue = true
+			if item["status"] != helpers.StatusMenungguVerifikasiManager {
+				t.Errorf("Expected status antrean %q, got %v", helpers.StatusMenungguVerifikasiManager, item["status"])
+			}
+			if item["payment_status"] != helpers.PaymentLunas {
+				t.Errorf("Expected payment_status lunas, got %v", item["payment_status"])
+			}
+			if item["document_status"] != helpers.DocumentLengkap {
+				t.Errorf("Expected document_status lengkap, got %v", item["document_status"])
+			}
+		}
+	}
+	if !foundInQueue {
+		t.Fatalf("Pendaftaran %s tidak ditemukan dalam antrean manager", nomor)
+	}
+
+	// ── Langkah 2: Manager Memeriksa Detail Pendaftaran ──
+	wDetail := httptest.NewRecorder()
+	rDetail, _ := http.NewRequest("GET", "/manager/verifikasi/"+nomor, nil)
+	rDetail.Header.Set("Authorization", "Bearer "+managerToken)
+	router.ServeHTTP(wDetail, rDetail)
+	if wDetail.Code != http.StatusOK {
+		t.Fatalf("Langkah 2 GET detail gagal: %d", wDetail.Code)
+	}
+
+	var detailResp struct {
+		Pendaftaran struct {
+			NomorPendaftaran string `json:"nomor_pendaftaran"`
+			Status           string `json:"status"`
+		} `json:"pendaftaran"`
+		Jamaah []struct {
+			Nama               string                   `json:"nama"`
+			DokumenPersyaratan []map[string]interface{} `json:"dokumen_persyaratan"`
+		} `json:"jamaah"`
+	}
+	_ = json.Unmarshal(wDetail.Body.Bytes(), &detailResp)
+	if detailResp.Pendaftaran.NomorPendaftaran != nomor {
+		t.Errorf("Expected detail nomor %q, got %q", nomor, detailResp.Pendaftaran.NomorPendaftaran)
+	}
+	if len(detailResp.Jamaah) != 1 || len(detailResp.Jamaah[0].DokumenPersyaratan) != 6 {
+		t.Errorf("Expected 1 jamaah dengan 6 dokumen persyaratan, got jamaah=%d, docs=%d",
+			len(detailResp.Jamaah), len(detailResp.Jamaah[0].DokumenPersyaratan))
+	}
+
+	// ── Langkah 3: Manager Menyetujui Pendaftaran ──
+	wApprove := httptest.NewRecorder()
+	rApprove, _ := http.NewRequest("POST", "/manager/verifikasi/"+nomor+"/approve", nil)
+	rApprove.Header.Set("Authorization", "Bearer "+managerToken)
+	router.ServeHTTP(wApprove, rApprove)
+	if wApprove.Code != http.StatusOK {
+		t.Fatalf("Langkah 3 Approval gagal: %d %s", wApprove.Code, wApprove.Body.String())
+	}
+
+	var approveResp struct {
+		Status     string     `json:"status"`
+		ApprovedBy *uuid.UUID `json:"approved_by"`
+		ApprovedAt *time.Time `json:"approved_at"`
+	}
+	_ = json.Unmarshal(wApprove.Body.Bytes(), &approveResp)
+	if approveResp.Status != helpers.StatusSiapBerangkat {
+		t.Errorf("Expected status siap_berangkat, got %q", approveResp.Status)
+	}
+	if approveResp.ApprovedBy == nil || *approveResp.ApprovedBy != manager.ID {
+		t.Errorf("Expected approved_by manager ID")
+	}
+
+	// ── Langkah 4: Manager Memeriksa Antrean Setelah Approval ──
+	// 4A: Pendaftaran tidak boleh lagi ada di antrean default (menunggu_verifikasi_manager)
+	wQueueAfter := httptest.NewRecorder()
+	rQueueAfter, _ := http.NewRequest("GET", "/manager/verifikasi", nil)
+	rQueueAfter.Header.Set("Authorization", "Bearer "+managerToken)
+	router.ServeHTTP(wQueueAfter, rQueueAfter)
+	var queueAfterResp struct {
+		Data []map[string]interface{} `json:"data"`
+	}
+	_ = json.Unmarshal(wQueueAfter.Body.Bytes(), &queueAfterResp)
+	for _, item := range queueAfterResp.Data {
+		if item["nomor_pendaftaran"] == nomor {
+			t.Fatalf("Regresi: Pendaftaran yang sudah diapprove masih muncul di antrean default!")
+		}
+	}
+
+	// 4B: Pendaftaran berpindah ke tab siap_berangkat
+	wSiap := httptest.NewRecorder()
+	rSiap, _ := http.NewRequest("GET", "/manager/verifikasi?status="+helpers.StatusSiapBerangkat, nil)
+	rSiap.Header.Set("Authorization", "Bearer "+managerToken)
+	router.ServeHTTP(wSiap, rSiap)
+	var siapResp struct {
+		Data []map[string]interface{} `json:"data"`
+	}
+	_ = json.Unmarshal(wSiap.Body.Bytes(), &siapResp)
+	foundInSiap := false
+	for _, item := range siapResp.Data {
+		if item["nomor_pendaftaran"] == nomor {
+			foundInSiap = true
+			if item["status"] != helpers.StatusSiapBerangkat {
+				t.Errorf("Expected status siap_berangkat di tab siap_berangkat, got %v", item["status"])
+			}
+		}
+	}
+	if !foundInSiap {
+		t.Errorf("Pendaftaran yang sudah diapprove tidak muncul di tab siap_berangkat")
+	}
+
+	// ── Langkah 5: Customer Mengakses Portal Jamaah & Melihat Status Terkini ──
+	wCustDash := httptest.NewRecorder()
+	rCustDash, _ := http.NewRequest("GET", "/customer/dashboard", nil)
+	rCustDash.Header.Set("Authorization", "Bearer "+custToken)
+	router.ServeHTTP(wCustDash, rCustDash)
+	if wCustDash.Code != http.StatusOK {
+		t.Fatalf("Langkah 5 GET /customer/dashboard gagal: %d", wCustDash.Code)
+	}
+
+	var dashResp struct {
+		Pendaftaran struct {
+			Status     string  `json:"status"`
+			ApprovedAt *string `json:"approved_at"`
+		} `json:"pendaftaran"`
+	}
+	_ = json.Unmarshal(wCustDash.Body.Bytes(), &dashResp)
+	if dashResp.Pendaftaran.Status != helpers.StatusSiapBerangkat {
+		t.Errorf("Portal customer status expected %q, got %q", helpers.StatusSiapBerangkat, dashResp.Pendaftaran.Status)
+	}
+
+	wCustStatus := httptest.NewRecorder()
+	rCustStatus, _ := http.NewRequest("GET", "/customer/status", nil)
+	rCustStatus.Header.Set("Authorization", "Bearer "+custToken)
+	router.ServeHTTP(wCustStatus, rCustStatus)
+	if wCustStatus.Code != http.StatusOK {
+		t.Fatalf("Langkah 5 GET /customer/status gagal: %d", wCustStatus.Code)
+	}
+
+	var statusResp struct {
+		Status string `json:"status"`
+	}
+	_ = json.Unmarshal(wCustStatus.Body.Bytes(), &statusResp)
+	if statusResp.Status != helpers.StatusSiapBerangkat {
+		t.Errorf("Portal status endpoint expected %q, got %q", helpers.StatusSiapBerangkat, statusResp.Status)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 13. Test E2E Penolakan Approval pada Kondisi Dokumen Pending, Revisi, dan Status Non-Eligible
+// ─────────────────────────────────────────────────────────────────────────────
+func TestManagerE2E_ApprovalRejectionConditions(t *testing.T) {
+	router, teardown := testhelper.SetupTestApp(t)
+	defer teardown()
+
+	manager := testhelper.CreateTestUser("administration_manager", "Manager Rejection E2E")
+	managerToken := testhelper.MakeJWT(manager.ID.String(), manager.Role, manager.Nama)
+	defer config.DB.Delete(&manager)
+
+	// Kasus A: Dokumen masih ada yang pending
+	t.Run("DokumenPending_Ditolak422", func(t *testing.T) {
+		cust := testhelper.CreateTestCustomer(testhelper.GenerateTestNIK(502), "Jamaah Pending Doc")
+		paket := testhelper.CreateTestPaket()
+		invNo := "INV-REJ-PEND-" + uuid.New().String()[:8]
+		inv := models.Invoice{NomorInvoice: invNo, TotalOrang: 1, TotalTagihan: paket.Harga, TotalPembayaran: paket.Harga, StatusPembayaran: models.InvoiceStatusLunas, CreatedAt: time.Now()}
+		config.DB.Create(&inv)
+		pay := models.Pembayaran{ID: uuid.New(), NomorInvoice: invNo, Jumlah: paket.Harga, Status: helpers.PaymentVerificationDiterima, TanggalBayar: time.Now()}
+		config.DB.Create(&pay)
+
+		noPend := "UMR-REJ-PEND-" + uuid.New().String()[:8]
+		pd := models.Pendaftaran{NomorPendaftaran: noPend, CustomerNIK: cust.NIK, PaketID: paket.ID, NomorInvoice: invNo, DocumentStatus: helpers.DocumentPending, Status: helpers.StatusMenungguVerifikasiManager, TanggalDaftar: time.Now()}
+		config.DB.Create(&pd)
+		testhelper.CreateCompleteDocs(noPend)
+		// Ubah 1 dokumen jadi pending
+		config.DB.Model(&models.Dokumen{}).Where("nomor_pendaftaran = ? AND jenis_dokumen = 'paspor'", noPend).Update("status_validasi", helpers.PaymentVerificationPending)
+
+		defer func() {
+			cleanupRegistration(noPend, invNo)
+			config.DB.Delete(&cust)
+			config.DB.Delete(&paket)
+		}()
+
+		w := httptest.NewRecorder()
+		r, _ := http.NewRequest("POST", "/manager/verifikasi/"+noPend+"/approve", nil)
+		r.Header.Set("Authorization", "Bearer "+managerToken)
+		router.ServeHTTP(w, r)
+
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("Expected 422 when doc is pending, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// Kasus B: Dokumen ditolak / revisi
+	t.Run("DokumenDitolak_Ditolak422", func(t *testing.T) {
+		cust := testhelper.CreateTestCustomer(testhelper.GenerateTestNIK(503), "Jamaah Ditolak Doc")
+		paket := testhelper.CreateTestPaket()
+		invNo := "INV-REJ-DITOLAK-" + uuid.New().String()[:8]
+		inv := models.Invoice{NomorInvoice: invNo, TotalOrang: 1, TotalTagihan: paket.Harga, TotalPembayaran: paket.Harga, StatusPembayaran: models.InvoiceStatusLunas, CreatedAt: time.Now()}
+		config.DB.Create(&inv)
+		pay := models.Pembayaran{ID: uuid.New(), NomorInvoice: invNo, Jumlah: paket.Harga, Status: helpers.PaymentVerificationDiterima, TanggalBayar: time.Now()}
+		config.DB.Create(&pay)
+
+		noPend := "UMR-REJ-DITOLAK-" + uuid.New().String()[:8]
+		pd := models.Pendaftaran{NomorPendaftaran: noPend, CustomerNIK: cust.NIK, PaketID: paket.ID, NomorInvoice: invNo, DocumentStatus: helpers.DocumentRevisi, Status: helpers.StatusMenungguVerifikasiManager, TanggalDaftar: time.Now()}
+		config.DB.Create(&pd)
+		testhelper.CreateCompleteDocs(noPend)
+		// Ubah 1 dokumen jadi ditolak
+		config.DB.Model(&models.Dokumen{}).Where("nomor_pendaftaran = ? AND jenis_dokumen = 'paspor'", noPend).Updates(map[string]interface{}{
+			"status_validasi":  helpers.PaymentVerificationDitolak,
+			"alasan_penolakan": "Paspor buram",
+		})
+
+		defer func() {
+			cleanupRegistration(noPend, invNo)
+			config.DB.Delete(&cust)
+			config.DB.Delete(&paket)
+		}()
+
+		w := httptest.NewRecorder()
+		r, _ := http.NewRequest("POST", "/manager/verifikasi/"+noPend+"/approve", nil)
+		r.Header.Set("Authorization", "Bearer "+managerToken)
+		router.ServeHTTP(w, r)
+
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("Expected 422 when doc is rejected, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// Kasus C: Status pendaftaran masih proses (belum masuk verifikasi manager)
+	t.Run("StatusProses_Ditolak422", func(t *testing.T) {
+		cust := testhelper.CreateTestCustomer(testhelper.GenerateTestNIK(504), "Jamaah Proses")
+		paket := testhelper.CreateTestPaket()
+		invNo := "INV-REJ-PROSES-" + uuid.New().String()[:8]
+		inv := models.Invoice{NomorInvoice: invNo, TotalOrang: 1, TotalTagihan: paket.Harga, TotalPembayaran: 0, StatusPembayaran: models.InvoiceStatusBelumBayar, CreatedAt: time.Now()}
+		config.DB.Create(&inv)
+
+		noPend := "UMR-REJ-PROSES-" + uuid.New().String()[:8]
+		pd := models.Pendaftaran{NomorPendaftaran: noPend, CustomerNIK: cust.NIK, PaketID: paket.ID, NomorInvoice: invNo, DocumentStatus: helpers.DocumentBelum, Status: helpers.StatusProses, TanggalDaftar: time.Now()}
+		config.DB.Create(&pd)
+
+		defer func() {
+			cleanupRegistration(noPend, invNo)
+			config.DB.Delete(&cust)
+			config.DB.Delete(&paket)
+		}()
+
+		w := httptest.NewRecorder()
+		r, _ := http.NewRequest("POST", "/manager/verifikasi/"+noPend+"/approve", nil)
+		r.Header.Set("Authorization", "Bearer "+managerToken)
+		router.ServeHTTP(w, r)
+
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("Expected 422 when status is proses, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// Kasus D: Status pendaftaran batal
+	t.Run("StatusBatal_Ditolak422", func(t *testing.T) {
+		cust := testhelper.CreateTestCustomer(testhelper.GenerateTestNIK(505), "Jamaah Batal")
+		paket := testhelper.CreateTestPaket()
+		invNo := "INV-REJ-BATAL-" + uuid.New().String()[:8]
+		inv := models.Invoice{NomorInvoice: invNo, TotalOrang: 1, TotalTagihan: paket.Harga, TotalPembayaran: 0, StatusPembayaran: models.InvoiceStatusBelumBayar, CreatedAt: time.Now()}
+		config.DB.Create(&inv)
+
+		noPend := "UMR-REJ-BATAL-" + uuid.New().String()[:8]
+		pd := models.Pendaftaran{NomorPendaftaran: noPend, CustomerNIK: cust.NIK, PaketID: paket.ID, NomorInvoice: invNo, DocumentStatus: helpers.DocumentBelum, Status: helpers.StatusBatal, TanggalDaftar: time.Now()}
+		config.DB.Create(&pd)
+
+		defer func() {
+			cleanupRegistration(noPend, invNo)
+			config.DB.Delete(&cust)
+			config.DB.Delete(&paket)
+		}()
+
+		w := httptest.NewRecorder()
+		r, _ := http.NewRequest("POST", "/manager/verifikasi/"+noPend+"/approve", nil)
+		r.Header.Set("Authorization", "Bearer "+managerToken)
+		router.ServeHTTP(w, r)
+
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("Expected 422 when status is batal, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 14. Test E2E Perlindungan Status Siap Berangkat & Isolasi Antarpendaftaran
+// ─────────────────────────────────────────────────────────────────────────────
+func TestManagerE2E_ApprovalProtectionAndNonInterference(t *testing.T) {
+	router, teardown := testhelper.SetupTestApp(t)
+	defer teardown()
+
+	manager := testhelper.CreateTestUser("administration_manager", "Manager Protection E2E")
+	managerToken := testhelper.MakeJWT(manager.ID.String(), manager.Role, manager.Nama)
+	defer config.DB.Delete(&manager)
+
+	// Pendaftaran A: Sudah disetujui (siap_berangkat + approved_at)
+	custA := testhelper.CreateTestCustomer(testhelper.GenerateTestNIK(506), "Jamaah Approved A")
+	paketA := testhelper.CreateTestPaket()
+	invNoA := "INV-PROT-A-" + uuid.New().String()[:8]
+	invA := models.Invoice{NomorInvoice: invNoA, TotalOrang: 1, TotalTagihan: paketA.Harga, TotalPembayaran: paketA.Harga, StatusPembayaran: models.InvoiceStatusLunas, CreatedAt: time.Now()}
+	config.DB.Create(&invA)
+	payA := models.Pembayaran{ID: uuid.New(), NomorInvoice: invNoA, Jumlah: paketA.Harga, Status: helpers.PaymentVerificationDiterima, TanggalBayar: time.Now()}
+	config.DB.Create(&payA)
+
+	noPendA := "UMR-PROT-A-" + uuid.New().String()[:8]
+	pdA := models.Pendaftaran{NomorPendaftaran: noPendA, CustomerNIK: custA.NIK, PaketID: paketA.ID, NomorInvoice: invNoA, DocumentStatus: helpers.DocumentLengkap, Status: helpers.StatusMenungguVerifikasiManager, TanggalDaftar: time.Now()}
+	config.DB.Create(&pdA)
+	testhelper.CreateCompleteDocs(noPendA)
+
+	// Pendaftaran B: Pendaftaran lain yang masih berstatus proses
+	custB := testhelper.CreateTestCustomer(testhelper.GenerateTestNIK(507), "Jamaah Proses B")
+	paketB := testhelper.CreateTestPaket()
+	invNoB := "INV-PROT-B-" + uuid.New().String()[:8]
+	invB := models.Invoice{NomorInvoice: invNoB, TotalOrang: 1, TotalTagihan: paketB.Harga, TotalPembayaran: 0, StatusPembayaran: models.InvoiceStatusBelumBayar, CreatedAt: time.Now()}
+	config.DB.Create(&invB)
+	noPendB := "UMR-PROT-B-" + uuid.New().String()[:8]
+	pdB := models.Pendaftaran{NomorPendaftaran: noPendB, CustomerNIK: custB.NIK, PaketID: paketB.ID, NomorInvoice: invNoB, DocumentStatus: helpers.DocumentBelum, Status: helpers.StatusProses, TanggalDaftar: time.Now()}
+	config.DB.Create(&pdB)
+
+	defer func() {
+		cleanupRegistration(noPendA, invNoA)
+		cleanupRegistration(noPendB, invNoB)
+		config.DB.Delete(&custA)
+		config.DB.Delete(&custB)
+		config.DB.Delete(&paketA)
+		config.DB.Delete(&paketB)
+	}()
+
+	// 1. Manager approve pendaftaran A
+	wApp := httptest.NewRecorder()
+	rApp, _ := http.NewRequest("POST", "/manager/verifikasi/"+noPendA+"/approve", nil)
+	rApp.Header.Set("Authorization", "Bearer "+managerToken)
+	router.ServeHTTP(wApp, rApp)
+	if wApp.Code != http.StatusOK {
+		t.Fatalf("Approval A gagal: %d", wApp.Code)
+	}
+
+	// 2. Trigger sinkronisasi global seluruh pendaftaran aktif
+	helpers.SyncActivePendaftaran()
+
+	// 3. Verifikasi Pendaftaran A tetap siap_berangkat dan ApprovedAt tidak hilang
+	var checkA models.Pendaftaran
+	config.DB.Where("nomor_pendaftaran = ?", noPendA).First(&checkA)
+	if checkA.Status != helpers.StatusSiapBerangkat {
+		t.Errorf("Status Pendaftaran A berubah menjadi %q!", checkA.Status)
+	}
+	if checkA.ApprovedAt == nil || checkA.ApprovedBy == nil {
+		t.Errorf("Data approval Pendaftaran A terhapus!")
+	}
+
+	// 4. Verifikasi Pendaftaran B tidak terpengaruh sama sekali (tetap proses)
+	var checkB models.Pendaftaran
+	config.DB.Where("nomor_pendaftaran = ?", noPendB).First(&checkB)
+	if checkB.Status != helpers.StatusProses {
+		t.Errorf("Pendaftaran B terpengaruh oleh approval A! Status: %q", checkB.Status)
+	}
+	if checkB.ApprovedBy != nil || checkB.ApprovedAt != nil {
+		t.Errorf("Pendaftaran B tidak boleh memiliki data approval!")
 	}
 }

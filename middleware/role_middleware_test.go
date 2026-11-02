@@ -448,4 +448,3 @@ func TestChainedAuthAndRoleMiddleware(t *testing.T) {
 		}
 	})
 }
-

@@ -8,6 +8,7 @@ import (
 	"bonita-backend/models"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
@@ -98,9 +99,9 @@ func TestMigrate_UnitWithMockDB(t *testing.T) {
 	}
 	defer func() { autoMigrateFn = prevAutoMigrateFn }()
 
-	// Dalam Migrate() terdapat 63 pemanggilan DB.Exec (ALTER TABLE, UPDATE, INSERT, DROP)
+	// Dalam Migrate() terdapat 66 pemanggilan DB.Exec (ALTER TABLE, UPDATE, INSERT, DROP)
 	// Kita pasang expectation untuk setiap eksekusi DDL/DML tersebut
-	totalExecStatements := 63
+	totalExecStatements := 66
 	for i := 0; i < totalExecStatements; i++ {
 		mock.ExpectExec(".*").WillReturnResult(sqlmock.NewResult(0, 1))
 	}
@@ -142,10 +143,28 @@ func TestMigrate_Integration(t *testing.T) {
 		t.Skip("Skipping DB migration integration test; set TEST_INTEGRATION_DB=true to run against live PostgreSQL")
 	}
 
+	if err := godotenv.Overload("../.env.test"); err != nil {
+		_ = godotenv.Overload(".env.test")
+	}
+	if os.Getenv("DB_NAME") != "bonita_umroh_test_db" {
+		t.Fatal("TEST_INTEGRATION_DB must use bonita_umroh_test_db")
+	}
+
+	if DB == nil {
+		ConnectDatabase()
+	}
 	if DB == nil {
 		t.Skip("Database not connected, skipping integration test")
 	}
 
-	// Memastikan migrasi berjalan idempoten tanpa error pada database nyata
+	var currentDB string
+	if err := DB.Raw("SELECT current_database()").Scan(&currentDB).Error; err != nil {
+		t.Fatalf("Gagal memeriksa database aktif: %v", err)
+	}
+	if currentDB != "bonita_umroh_test_db" {
+		t.Fatalf("Terkoneksi ke database %q, bukan bonita_umroh_test_db", currentDB)
+	}
+
+	// Memastikan migrasi berjalan idempoten tanpa error pada database test
 	Migrate()
 }

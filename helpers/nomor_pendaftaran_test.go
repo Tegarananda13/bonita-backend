@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,12 +20,72 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/joho/godotenv"
+	"gorm.io/gorm"
 )
+
+var testMigrationOnce sync.Once
+
+func setupTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	if err := godotenv.Overload("../.env.test"); err != nil {
+		_ = godotenv.Overload(".env.test")
+	}
+
+	if dbName := os.Getenv("DB_NAME"); dbName != "bonita_umroh_test_db" {
+		t.Fatalf("Test dibatalkan: DB_NAME bukan database test (DB_NAME=%q)", dbName)
+	}
+
+	host := os.Getenv("DB_HOST")
+	port := os.Getenv("DB_PORT")
+	if host == "" {
+		t.Skip("DB_HOST tidak diset, skipping live DB test")
+		return nil
+	}
+	if port == "" {
+		port = "5432"
+	}
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 500*time.Millisecond)
+	if err != nil {
+		t.Skip("PostgreSQL test server tidak dapat dijangkau, skipping live DB test")
+		return nil
+	}
+	_ = conn.Close()
+
+	if config.DB == nil {
+		config.ConnectDatabase()
+		if config.DB == nil {
+			t.Fatal("Koneksi ke database test gagal")
+		}
+	} else {
+		sqlDB, err := config.DB.DB()
+		if err != nil || sqlDB.Ping() != nil {
+			config.ConnectDatabase()
+		}
+	}
+
+	var currentDB string
+	if err := config.DB.Raw("SELECT current_database()").Scan(&currentDB).Error; err != nil {
+		t.Fatalf("Gagal memeriksa database aktif: %v", err)
+	}
+	if currentDB != "bonita_umroh_test_db" {
+		t.Fatalf("Test dibatalkan: terkoneksi ke database %q, bukan bonita_umroh_test_db", currentDB)
+	}
+
+	testMigrationOnce.Do(func() {
+		config.Migrate()
+	})
+
+	return config.DB
+}
 
 func canConnectLocalDB(t *testing.T) bool {
 	t.Helper()
-	_ = godotenv.Load("../.env")
-	_ = godotenv.Load(".env")
+	if err := godotenv.Overload("../.env.test"); err != nil {
+		_ = godotenv.Overload(".env.test")
+	}
+	if os.Getenv("DB_NAME") != "bonita_umroh_test_db" {
+		return false
+	}
 	host := os.Getenv("DB_HOST")
 	port := os.Getenv("DB_PORT")
 	if host == "" {
@@ -121,13 +182,11 @@ func TestIsDuplicateKeyError(t *testing.T) {
 	}
 }
 
-// TestGenerateNomorPendaftaranDB menguji generator dengan koneksi DB nyata (jika tersedia)
+// TestGenerateNomorPendaftaranDB menguji generator dengan koneksi DB test nyata
 func TestGenerateNomorPendaftaranDB(t *testing.T) {
-	if !canConnectLocalDB(t) {
-		t.Skip("Skipping live DB test: local PostgreSQL is not reachable")
-	}
-	if config.DB == nil {
-		config.ConnectDatabase()
+	db := setupTestDB(t)
+	if db == nil {
+		return
 	}
 
 	nomor, err := helpers.GenerateNomorPendaftaran(config.DB)
@@ -151,25 +210,70 @@ func TestGenerateNomorPendaftaranDB(t *testing.T) {
 // TestKompatibilitasNomorLama memastikan bahwa nomor pendaftaran berformat lama
 // tetap dikenali sebagai string valid dan dapat dicari di database
 func TestKompatibilitasNomorLama(t *testing.T) {
-	if !canConnectLocalDB(t) {
-		t.Skip("Skipping live DB test: local PostgreSQL is not reachable")
-	}
-	if config.DB == nil {
-		config.ConnectDatabase()
+	db := setupTestDB(t)
+	if db == nil {
+		return
 	}
 
-	// Ambil salah satu pendaftaran di DB jika ada
-	var existing models.Pendaftaran
-	err := config.DB.First(&existing).Error
-	if err == nil && existing.NomorPendaftaran != "" {
-		// Pastikan query berdasarkan nomor pendaftaran lama tetap bekerja
-		var found models.Pendaftaran
-		if err := config.DB.Where("nomor_pendaftaran = ?", existing.NomorPendaftaran).First(&found).Error; err != nil {
-			t.Errorf("Gagal mencari pendaftaran lama dengan nomor: %s", existing.NomorPendaftaran)
-		}
-		if found.NomorPendaftaran != existing.NomorPendaftaran {
-			t.Errorf("Nomor pendaftaran tidak cocok: %s != %s", found.NomorPendaftaran, existing.NomorPendaftaran)
-		}
+	oldNomor := "UMR-20240101-9999"
+	testNIK := "999902" + uuid.New().String()[:10]
+	testPaketID := uuid.New()
+	testInvoiceNo := "INV-OLD-" + uuid.New().String()[:8]
+
+	// Cleanup
+	defer func() {
+		config.DB.Where("nomor_pendaftaran = ?", oldNomor).Delete(&models.Pendaftaran{})
+		config.DB.Where("nomor_invoice = ?", testInvoiceNo).Delete(&models.Invoice{})
+		config.DB.Where("id = ?", testPaketID).Delete(&models.PaketUmroh{})
+		config.DB.Where("nik = ?", testNIK).Delete(&models.Customer{})
+	}()
+
+	paket := models.PaketUmroh{
+		ID:        testPaketID,
+		NamaPaket: "Paket Lama Test " + testInvoiceNo,
+		Harga:     25000000,
+		KuotaMax:  20,
+		IsActive:  true,
+	}
+	if err := config.DB.Create(&paket).Error; err != nil {
+		t.Fatalf("Gagal membuat test paket untuk nomor lama: %v", err)
+	}
+
+	cust := models.Customer{
+		NIK:  testNIK,
+		Nama: "Jamaah Format Lama",
+	}
+	if err := config.DB.Create(&cust).Error; err != nil {
+		t.Fatalf("Gagal membuat test customer untuk nomor lama: %v", err)
+	}
+
+	inv := models.Invoice{
+		NomorInvoice: testInvoiceNo,
+		TotalOrang:   1,
+		TotalTagihan: 25000000,
+	}
+	if err := config.DB.Create(&inv).Error; err != nil {
+		t.Fatalf("Gagal membuat test invoice untuk nomor lama: %v", err)
+	}
+
+	oldPend := models.Pendaftaran{
+		NomorPendaftaran: oldNomor,
+		CustomerNIK:      testNIK,
+		PaketID:          testPaketID,
+		NomorInvoice:     testInvoiceNo,
+		Status:           helpers.StatusProses,
+		TanggalDaftar:    time.Now(),
+	}
+	if err := config.DB.Create(&oldPend).Error; err != nil {
+		t.Fatalf("Gagal membuat data pendaftaran format lama: %v", err)
+	}
+
+	var found models.Pendaftaran
+	if err := config.DB.Where("nomor_pendaftaran = ?", oldNomor).First(&found).Error; err != nil {
+		t.Errorf("Gagal mencari pendaftaran lama dengan nomor: %s, err: %v", oldNomor, err)
+	}
+	if found.NomorPendaftaran != oldNomor {
+		t.Errorf("Nomor pendaftaran tidak cocok: %s != %s", found.NomorPendaftaran, oldNomor)
 	}
 }
 
@@ -177,25 +281,74 @@ func TestKompatibilitasNomorLama(t *testing.T) {
 // sengaja diset ke nomor yang sudah ada (simulasi konflik), fungsi CreatePendaftaranWithRetry
 // mendeteksi duplikasi key, otomatis membuat nomor baru yang unik, dan berhasil disimpan ke DB.
 func TestCreatePendaftaranWithRetry_ConflictResolution(t *testing.T) {
-	if !canConnectLocalDB(t) {
-		t.Skip("Skipping live DB test: local PostgreSQL is not reachable")
-	}
-	if config.DB == nil {
-		config.ConnectDatabase()
+	db := setupTestDB(t)
+	if db == nil {
+		return
 	}
 
-	var existing models.Pendaftaran
-	if err := config.DB.First(&existing).Error; err != nil {
-		t.Skip("Belum ada data pendaftaran di database untuk menguji konflik duplikasi")
-		return
+	testNIK := "999903" + uuid.New().String()[:10]
+	testPaketID := uuid.New()
+	testInvoiceNo := "INV-RTR-" + uuid.New().String()[:8]
+	existingNomor := "UMR-20261030-COLL"
+
+	var newlyCreatedNomor string
+
+	defer func() {
+		if newlyCreatedNomor != "" {
+			config.DB.Where("nomor_pendaftaran = ?", newlyCreatedNomor).Delete(&models.Pendaftaran{})
+		}
+		config.DB.Where("nomor_pendaftaran = ?", existingNomor).Delete(&models.Pendaftaran{})
+		config.DB.Where("nomor_invoice = ?", testInvoiceNo).Delete(&models.Invoice{})
+		config.DB.Where("id = ?", testPaketID).Delete(&models.PaketUmroh{})
+		config.DB.Where("nik = ?", testNIK).Delete(&models.Customer{})
+	}()
+
+	paket := models.PaketUmroh{
+		ID:        testPaketID,
+		NamaPaket: "Paket Retry Test " + testInvoiceNo,
+		Harga:     25000000,
+		KuotaMax:  20,
+		IsActive:  true,
+	}
+	if err := config.DB.Create(&paket).Error; err != nil {
+		t.Fatalf("Gagal membuat test paket: %v", err)
+	}
+
+	cust := models.Customer{
+		NIK:  testNIK,
+		Nama: "Jamaah Retry Test",
+	}
+	if err := config.DB.Create(&cust).Error; err != nil {
+		t.Fatalf("Gagal membuat test customer: %v", err)
+	}
+
+	inv := models.Invoice{
+		NomorInvoice: testInvoiceNo,
+		TotalOrang:   1,
+		TotalTagihan: 25000000,
+	}
+	if err := config.DB.Create(&inv).Error; err != nil {
+		t.Fatalf("Gagal membuat test invoice: %v", err)
+	}
+
+	existing := models.Pendaftaran{
+		NomorPendaftaran: existingNomor,
+		CustomerNIK:      testNIK,
+		PaketID:          testPaketID,
+		NomorInvoice:     testInvoiceNo,
+		Status:           helpers.StatusProses,
+		TanggalDaftar:    time.Now(),
+	}
+	if err := config.DB.Create(&existing).Error; err != nil {
+		t.Fatalf("Gagal membuat data existing untuk simulasi konflik: %v", err)
 	}
 
 	// Buat copy pendaftaran baru dengan nomor pendaftaran yang sengaja sama dengan existing
 	testPendaftaran := models.Pendaftaran{
-		NomorPendaftaran:   existing.NomorPendaftaran, // Sengaja diset sama agar memicu collision
-		CustomerNIK:        existing.CustomerNIK,
-		PaketID:            existing.PaketID,
-		NomorInvoice:       existing.NomorInvoice,
+		NomorPendaftaran:   existingNomor, // Sengaja diset sama agar memicu collision
+		CustomerNIK:        testNIK,
+		PaketID:            testPaketID,
+		NomorInvoice:       testInvoiceNo,
 		DocumentStatus:     helpers.DocumentBelum,
 		Status:             helpers.StatusProses,
 		RegistrationSource: helpers.SourceAdmin,
@@ -208,9 +361,10 @@ func TestCreatePendaftaranWithRetry_ConflictResolution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePendaftaranWithRetry gagal menangani konflik: %v", err)
 	}
+	newlyCreatedNomor = testPendaftaran.NomorPendaftaran
 
 	// Pastikan nomor pendaftaran baru yang tersimpan berbeda dari existing (konflik teratasi)
-	if testPendaftaran.NomorPendaftaran == existing.NomorPendaftaran {
+	if testPendaftaran.NomorPendaftaran == existingNomor {
 		t.Errorf("Nomor pendaftaran tidak berubah setelah penanganan konflik: %s", testPendaftaran.NomorPendaftaran)
 	}
 
@@ -220,8 +374,11 @@ func TestCreatePendaftaranWithRetry_ConflictResolution(t *testing.T) {
 		t.Errorf("Nomor pendaftaran hasil resolusi konflik %s tidak sesuai format UMR-YYYYMMDD-XXXX", testPendaftaran.NomorPendaftaran)
 	}
 
-	// Bersihkan data test
-	config.DB.Where("nomor_pendaftaran = ?", testPendaftaran.NomorPendaftaran).Delete(&models.Pendaftaran{})
+	// Pastikan data tersimpan di DB
+	var check models.Pendaftaran
+	if err := config.DB.Where("nomor_pendaftaran = ?", testPendaftaran.NomorPendaftaran).First(&check).Error; err != nil {
+		t.Errorf("Pendaftaran baru hasil retry tidak ditemukan di DB: %v", err)
+	}
 }
 
 func TestGenerateNomorPendaftaran_UnitMockDB(t *testing.T) {

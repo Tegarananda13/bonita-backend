@@ -19,6 +19,16 @@ import (
 // askGemini didelegasikan ke helpers.AskGemini secara default, dan dapat di-override pada unit test.
 var askGemini = helpers.AskGemini
 
+// SetAskGeminiFunc memungkinkan pengujian meng-override fungsi pemanggilan Gemini
+// dan mengembalikan fungsi restore untuk mengembalikan implementasi asli.
+func SetAskGeminiFunc(fn func(question string) (string, error)) func() {
+	orig := askGemini
+	askGemini = fn
+	return func() {
+		askGemini = orig
+	}
+}
+
 // ── Intent Keywords untuk deteksi pengaduan ───────────────────────────────────
 
 var intentPengaduan = []string{

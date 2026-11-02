@@ -365,4 +365,3 @@ func TestCustomerMiddleware(t *testing.T) {
 		}
 	})
 }
-

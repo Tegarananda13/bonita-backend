@@ -2,7 +2,6 @@ package helpers_test
 
 import (
 	"database/sql"
-	"os"
 	"regexp"
 	"testing"
 	"time"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
-	"github.com/joho/godotenv"
 )
 
 // TestDetermineGroupMainStatus_UnitTests menguji logic aturan status utama
@@ -114,32 +112,19 @@ func TestIsInvoiceLunas(t *testing.T) {
 }
 
 // TestSyncPendaftaranStatus_DatabaseIntegration menguji Test 4, Test 5, Test 7, dan Test 8
-// langsung terhadap database jika koneksi DB tersedia.
+// langsung terhadap database test jika koneksi DB tersedia.
 func TestSyncPendaftaranStatus_DatabaseIntegration(t *testing.T) {
-	if !canConnectLocalDB(t) {
-		t.Skip("Skipping live DB test: local PostgreSQL is not reachable")
+	db := setupTestDB(t)
+	if db == nil {
 		return
 	}
-	// Muat file .env dari root bonita-backend jika DB belum tersambung
-	_ = godotenv.Load("../.env")
-	_ = godotenv.Load(".env")
-
-	if os.Getenv("DB_HOST") == "" {
-		t.Skip("DB_HOST not set, skipping DB integration test")
-		return
-	}
-
-	config.ConnectDatabase()
-	if config.DB == nil {
-		t.Skip("Could not connect to database, skipping DB integration test")
-		return
-	}
-	config.Migrate()
 
 	testInvoiceNo := "TEST-INV-" + uuid.New().String()[:8]
 	nomorA := "TEST-UMR-A-" + uuid.New().String()[:6]
 	nomorB := "TEST-UMR-B-" + uuid.New().String()[:6]
 	nomorC := "TEST-UMR-C-" + uuid.New().String()[:6]
+	testNIK := "999904" + uuid.New().String()[:10]
+	testPaketID := uuid.New()
 
 	// Pastikan cleanup setelah test selesai
 	cleanup := func() {
@@ -147,9 +132,39 @@ func TestSyncPendaftaranStatus_DatabaseIntegration(t *testing.T) {
 		config.DB.Where("nomor_pendaftaran IN (?)", []string{nomorA, nomorB, nomorC}).Delete(&models.Pendaftaran{})
 		config.DB.Where("nomor_invoice = ?", testInvoiceNo).Delete(&models.Pembayaran{})
 		config.DB.Where("nomor_invoice = ?", testInvoiceNo).Delete(&models.Invoice{})
+		config.DB.Where("id = ?", testPaketID).Delete(&models.PaketUmroh{})
+		config.DB.Where("nik = ?", testNIK).Delete(&models.Customer{})
 	}
 	cleanup()
 	defer cleanup()
+
+	// Buat Paket khusus test
+	paket := models.PaketUmroh{
+		ID:               testPaketID,
+		NamaPaket:        "Paket Test Sync Group " + testInvoiceNo,
+		Harga:            30000000,
+		KuotaMax:         50,
+		KuotaTerpakai:    0,
+		IsActive:         true,
+		IsFinished:       false,
+		TanggalBerangkat: time.Now().AddDate(0, 1, 0),
+		Durasi:           10,
+	}
+	if err := config.DB.Create(&paket).Error; err != nil {
+		t.Fatalf("Failed to create test paket: %v", err)
+	}
+
+	// Buat Customer khusus test
+	cust := models.Customer{
+		NIK:         testNIK,
+		Nama:        "Customer Test Sync",
+		NoHP:        "081234567899",
+		Email:       "test.sync@example.com",
+		TempatLahir: "Jakarta",
+	}
+	if err := config.DB.Create(&cust).Error; err != nil {
+		t.Fatalf("Failed to create test customer: %v", err)
+	}
 
 	// 1. Buat Invoice grup bernilai Rp90.000.000 (3 jamaah @ Rp30.000.000)
 	inv := models.Invoice{
@@ -174,17 +189,6 @@ func TestSyncPendaftaranStatus_DatabaseIntegration(t *testing.T) {
 	}
 	if err := config.DB.Create(&bayar).Error; err != nil {
 		t.Fatalf("Failed to create test pembayaran: %v", err)
-	}
-
-	var paket models.PaketUmroh
-	if err := config.DB.First(&paket).Error; err != nil {
-		t.Skip("No paket found in database, skipping DB test")
-		return
-	}
-	var cust models.Customer
-	if err := config.DB.First(&cust).Error; err != nil {
-		t.Skip("No customer found in database, skipping DB test")
-		return
 	}
 
 	// 3. Buat 3 pendaftaran grup dalam database dengan status awal "proses"

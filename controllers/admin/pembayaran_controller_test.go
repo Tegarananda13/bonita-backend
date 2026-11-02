@@ -731,8 +731,9 @@ func TestAdminCreatePembayaran(t *testing.T) {
 		mockSyncPendaftaranStatusFull(mock, nomorInvoice, 30000000.0, 7500000.0)
 
 		formData := url.Values{
-			"jumlah":        {"7500000"},
-			"tanggal_bayar": {"2026-10-25"},
+			"jumlah":            {"7500000"},
+			"tanggal_bayar":     {"2026-10-25"},
+			"metode_pembayaran": {"tunai"},
 		}
 
 		w := httptest.NewRecorder()
@@ -807,8 +808,10 @@ func TestAdminCreatePembayaran(t *testing.T) {
 			http.MethodPost,
 			"/admin/pendaftaran/"+nomorPendaftaran+"/pembayaran",
 			map[string]string{
-				"jumlah":        "15000000",
-				"tanggal_bayar": "2026-10-25",
+				"jumlah":            "15000000",
+				"tanggal_bayar":     "2026-10-25",
+				"metode_pembayaran": "transfer",
+				"bank_tujuan":       "BSI",
 			},
 			"bukti",
 			"bukti_pelunasan.jpg",
@@ -965,7 +968,8 @@ func TestAdminCreatePembayaran(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Params = gin.Params{{Key: "nomor", Value: nomorP}}
 		c.Request = createFormRequest(http.MethodPost, "/admin/pendaftaran/"+nomorP+"/pembayaran", url.Values{
-			"jumlah": {"3000000"}, // Di bawah 5 juta
+			"jumlah":            {"3000000"}, // Di bawah 5 juta
+			"metode_pembayaran": {"tunai"},
 		})
 
 		AdminCreatePembayaran(c)
@@ -1010,7 +1014,8 @@ func TestAdminCreatePembayaran(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Params = gin.Params{{Key: "nomor", Value: nomorP}}
 		c.Request = createFormRequest(http.MethodPost, "/admin/pendaftaran/"+nomorP+"/pembayaran", url.Values{
-			"jumlah": {"10000000"}, // 20jt + 10jt = 30jt > 25jt
+			"jumlah":            {"10000000"}, // 20jt + 10jt = 30jt > 25jt
+			"metode_pembayaran": {"tunai"},
 		})
 
 		AdminCreatePembayaran(c)
@@ -1059,7 +1064,8 @@ func TestAdminCreatePembayaran(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Params = gin.Params{{Key: "nomor", Value: nomorP}}
 		c.Request = createFormRequest(http.MethodPost, "/admin/pendaftaran/"+nomorP+"/pembayaran", url.Values{
-			"jumlah": {"5000000"},
+			"jumlah":            {"5000000"},
+			"metode_pembayaran": {"tunai"},
 		})
 
 		AdminCreatePembayaran(c)
@@ -1073,6 +1079,376 @@ func TestAdminCreatePembayaran(t *testing.T) {
 
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("Success_Tunai_AutoDiterima_NoBukti_SumberAdmin_EmptyBank", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+		mock.MatchExpectationsInOrder(false)
+
+		nomorP := "UMR-TUNAI-01"
+		inv := "INV-TUNAI-01"
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomorP, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice"}).
+				AddRow(nomorP, inv))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "invoice" WHERE "invoice"."nomor_invoice" = $1`)).
+			WithArgs(inv).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_invoice", "total_tagihan"}).
+				AddRow(inv, 30000000.0))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT COALESCE(SUM(jumlah),0) FROM "pembayaran" WHERE nomor_invoice = $1 AND status = $2`)).
+			WithArgs(inv, helpers.PaymentVerificationDiterima).
+			WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(0.0))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pembayaran"`)).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		mockSyncPendaftaranStatusFull(mock, inv, 30000000.0, 5000000.0)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("role", "admin")
+		c.Params = gin.Params{{Key: "nomor", Value: nomorP}}
+		c.Request = createFormRequest(http.MethodPost, "/admin/pendaftaran/"+nomorP+"/pembayaran", url.Values{
+			"jumlah":            {"5000000"},
+			"tanggal_bayar":     {"2026-10-30"},
+			"metode_pembayaran": {"tunai"},
+		})
+
+		AdminCreatePembayaran(c)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("Expected HTTP 201, got %d: %s", w.Code, w.Body.String())
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, `"status":"diterima"`) {
+			t.Errorf("Expected status diterima, got: %s", body)
+		}
+		if !strings.Contains(body, `"metode_pembayaran":"tunai"`) {
+			t.Errorf("Expected metode_pembayaran tunai, got: %s", body)
+		}
+		if !strings.Contains(body, `"bank_tujuan":""`) {
+			t.Errorf("Expected empty bank_tujuan for tunai, got: %s", body)
+		}
+		if !strings.Contains(body, `"sumber_pembayaran":"admin"`) {
+			t.Errorf("Expected sumber_pembayaran admin, got: %s", body)
+		}
+		if !strings.Contains(body, `"metode_label":"Tunai (Pembayaran di Kantor)"`) {
+			t.Errorf("Expected metode_label Tunai (Pembayaran di Kantor), got: %s", body)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("Success_TransferBSI_AutoDiterima_SumberAdmin", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+		mock.MatchExpectationsInOrder(false)
+
+		nomorP := "UMR-BSI-01"
+		inv := "INV-BSI-01"
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomorP, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice"}).
+				AddRow(nomorP, inv))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "invoice" WHERE "invoice"."nomor_invoice" = $1`)).
+			WithArgs(inv).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_invoice", "total_tagihan"}).
+				AddRow(inv, 30000000.0))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT COALESCE(SUM(jumlah),0) FROM "pembayaran" WHERE nomor_invoice = $1 AND status = $2`)).
+			WithArgs(inv, helpers.PaymentVerificationDiterima).
+			WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(0.0))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pembayaran"`)).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		mockSyncPendaftaranStatusFull(mock, inv, 30000000.0, 10000000.0)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("role", "admin")
+		c.Params = gin.Params{{Key: "nomor", Value: nomorP}}
+		c.Request = createFormRequest(http.MethodPost, "/admin/pendaftaran/"+nomorP+"/pembayaran", url.Values{
+			"jumlah":            {"10000000"},
+			"tanggal_bayar":     {"2026-10-30"},
+			"metode_pembayaran": {"transfer"},
+			"bank_tujuan":       {"bsi"},
+		})
+
+		AdminCreatePembayaran(c)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("Expected HTTP 201, got %d: %s", w.Code, w.Body.String())
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, `"status":"diterima"`) || !strings.Contains(body, `"bank_tujuan":"BSI"`) || !strings.Contains(body, `"metode_label":"Transfer Bank BSI"`) {
+			t.Errorf("Unexpected body for Transfer BSI: %s", body)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("Success_TransferMandiri_AutoDiterima_SumberAdmin", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+		mock.MatchExpectationsInOrder(false)
+
+		nomorP := "UMR-MANDIRI-01"
+		inv := "INV-MANDIRI-01"
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomorP, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice"}).
+				AddRow(nomorP, inv))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "invoice" WHERE "invoice"."nomor_invoice" = $1`)).
+			WithArgs(inv).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_invoice", "total_tagihan"}).
+				AddRow(inv, 30000000.0))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT COALESCE(SUM(jumlah),0) FROM "pembayaran" WHERE nomor_invoice = $1 AND status = $2`)).
+			WithArgs(inv, helpers.PaymentVerificationDiterima).
+			WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(5000000.0))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pembayaran"`)).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		mockSyncPendaftaranStatusFull(mock, inv, 30000000.0, 15000000.0)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("role", "admin")
+		c.Params = gin.Params{{Key: "nomor", Value: nomorP}}
+		c.Request = createFormRequest(http.MethodPost, "/admin/pendaftaran/"+nomorP+"/pembayaran", url.Values{
+			"jumlah":            {"10000000"},
+			"tanggal_bayar":     {"2026-10-30"},
+			"metode_pembayaran": {"transfer"},
+			"bank_tujuan":       {"Mandiri"},
+		})
+
+		AdminCreatePembayaran(c)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("Expected HTTP 201, got %d: %s", w.Code, w.Body.String())
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, `"status":"diterima"`) || !strings.Contains(body, `"bank_tujuan":"MANDIRI"`) || !strings.Contains(body, `"metode_label":"Transfer Bank Mandiri"`) {
+			t.Errorf("Unexpected body for Transfer Mandiri: %s", body)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("Success_TransferBCA_JSONPayload_AutoDiterima_SumberAdmin", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+		mock.MatchExpectationsInOrder(false)
+
+		nomorP := "UMR-BCA-01"
+		inv := "INV-BCA-01"
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+			WithArgs(nomorP, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice"}).
+				AddRow(nomorP, inv))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "invoice" WHERE "invoice"."nomor_invoice" = $1`)).
+			WithArgs(inv).
+			WillReturnRows(sqlmock.NewRows([]string{"nomor_invoice", "total_tagihan"}).
+				AddRow(inv, 30000000.0))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT COALESCE(SUM(jumlah),0) FROM "pembayaran" WHERE nomor_invoice = $1 AND status = $2`)).
+			WithArgs(inv, helpers.PaymentVerificationDiterima).
+			WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(10000000.0))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pembayaran"`)).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		mockSyncPendaftaranStatusFull(mock, inv, 30000000.0, 30000000.0)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("role", "administration_manager")
+		c.Params = gin.Params{{Key: "nomor", Value: nomorP}}
+		c.Request, _ = http.NewRequest(http.MethodPost, "/admin/pendaftaran/"+nomorP+"/pembayaran",
+			bytes.NewBufferString(`{"jumlah":20000000,"tanggal_bayar":"2026-10-30","metode_pembayaran":"transfer","bank_tujuan":"BCA"}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		AdminCreatePembayaran(c)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("Expected HTTP 201, got %d: %s", w.Code, w.Body.String())
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, `"status":"diterima"`) || !strings.Contains(body, `"bank_tujuan":"BCA"`) || !strings.Contains(body, `"metode_label":"Transfer Bank BCA"`) {
+			t.Errorf("Unexpected body for Transfer BCA: %s", body)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("BadRequest_InvalidValidationCases_MethodBankAndDate", func(t *testing.T) {
+		cases := []struct {
+			name    string
+			form    url.Values
+			wantErr string
+		}{
+			{
+				name: "Transfer without bank_tujuan",
+				form: url.Values{
+					"jumlah":            {"5000000"},
+					"tanggal_bayar":     {"2026-10-30"},
+					"metode_pembayaran": {"transfer"},
+				},
+				wantErr: "Bank tujuan wajib diisi untuk metode pembayaran transfer",
+			},
+			{
+				name: "Transfer with invalid bank BRI",
+				form: url.Values{
+					"jumlah":            {"5000000"},
+					"tanggal_bayar":     {"2026-10-30"},
+					"metode_pembayaran": {"transfer"},
+					"bank_tujuan":       {"BRI"},
+				},
+				wantErr: "Bank tujuan tidak valid (hanya mendukung BSI, Mandiri, atau BCA)",
+			},
+			{
+				name: "Transfer with invalid bank BNI",
+				form: url.Values{
+					"jumlah":            {"5000000"},
+					"tanggal_bayar":     {"2026-10-30"},
+					"metode_pembayaran": {"transfer"},
+					"bank_tujuan":       {"BNI"},
+				},
+				wantErr: "Bank tujuan tidak valid (hanya mendukung BSI, Mandiri, atau BCA)",
+			},
+			{
+				name: "Tunai with bank_tujuan filled",
+				form: url.Values{
+					"jumlah":            {"5000000"},
+					"tanggal_bayar":     {"2026-10-30"},
+					"metode_pembayaran": {"tunai"},
+					"bank_tujuan":       {"BSI"},
+				},
+				wantErr: "Bank tujuan tidak boleh diisi untuk metode pembayaran tunai",
+			},
+			{
+				name: "Unsupported metode_pembayaran qris",
+				form: url.Values{
+					"jumlah":            {"5000000"},
+					"tanggal_bayar":     {"2026-10-30"},
+					"metode_pembayaran": {"qris"},
+				},
+				wantErr: "Metode pembayaran tidak valid (hanya mendukung transfer atau tunai)",
+			},
+			{
+				name: "Unsupported metode_pembayaran kartu_kredit",
+				form: url.Values{
+					"jumlah":            {"5000000"},
+					"tanggal_bayar":     {"2026-10-30"},
+					"metode_pembayaran": {"kartu_kredit"},
+				},
+				wantErr: "Metode pembayaran tidak valid (hanya mendukung transfer atau tunai)",
+			},
+			{
+				name: "Invalid tanggal_bayar format",
+				form: url.Values{
+					"jumlah":            {"5000000"},
+					"tanggal_bayar":     {"30/10/2026"},
+					"metode_pembayaran": {"tunai"},
+				},
+				wantErr: "Tanggal pembayaran tidak valid",
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				mock, cleanup := setupMockDB(t)
+				defer cleanup()
+				mock.MatchExpectationsInOrder(false)
+
+				nomorP := "UMR-VAL-01"
+				inv := "INV-VAL-01"
+
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
+					WithArgs(nomorP, 1).
+					WillReturnRows(sqlmock.NewRows([]string{"nomor_pendaftaran", "nomor_invoice"}).
+						AddRow(nomorP, inv))
+
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "invoice" WHERE "invoice"."nomor_invoice" = $1`)).
+					WithArgs(inv).
+					WillReturnRows(sqlmock.NewRows([]string{"nomor_invoice", "total_tagihan"}).
+						AddRow(inv, 25000000.0))
+
+				w := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(w)
+				c.Params = gin.Params{{Key: "nomor", Value: nomorP}}
+				c.Request = createFormRequest(http.MethodPost, "/admin/pendaftaran/"+nomorP+"/pembayaran", tc.form)
+
+				AdminCreatePembayaran(c)
+
+				if w.Code != http.StatusBadRequest {
+					t.Fatalf("Expected HTTP 400, got %d: %s", w.Code, w.Body.String())
+				}
+				if !strings.Contains(w.Body.String(), tc.wantErr) {
+					t.Errorf("Expected error containing %q, got %s", tc.wantErr, w.Body.String())
+				}
+			})
+		}
+	})
+
+	t.Run("Forbidden_NonAdminRoleOrCustomerSession", func(t *testing.T) {
+		// Skenario 1: role = customer
+		w1 := httptest.NewRecorder()
+		c1, _ := gin.CreateTestContext(w1)
+		c1.Set("role", "customer")
+		c1.Params = gin.Params{{Key: "nomor", Value: "UMR-001"}}
+		c1.Request = createFormRequest(http.MethodPost, "/admin/pendaftaran/UMR-001/pembayaran", url.Values{
+			"jumlah":            {"5000000"},
+			"metode_pembayaran": {"tunai"},
+		})
+
+		AdminCreatePembayaran(c1)
+		if w1.Code != http.StatusForbidden {
+			t.Fatalf("Expected HTTP 403 for customer role, got %d: %s", w1.Code, w1.Body.String())
+		}
+
+		// Skenario 2: pendaftaran_id diset dari sesi portal customer tanpa role admin
+		w2 := httptest.NewRecorder()
+		c2, _ := gin.CreateTestContext(w2)
+		c2.Set("pendaftaran_id", "UMR-001")
+		c2.Params = gin.Params{{Key: "nomor", Value: "UMR-001"}}
+		c2.Request = createFormRequest(http.MethodPost, "/admin/pendaftaran/UMR-001/pembayaran", url.Values{
+			"jumlah":            {"5000000"},
+			"metode_pembayaran": {"tunai"},
+		})
+
+		AdminCreatePembayaran(c2)
+		if w2.Code != http.StatusForbidden {
+			t.Fatalf("Expected HTTP 403 for customer session token, got %d: %s", w2.Code, w2.Body.String())
 		}
 	})
 }
@@ -1256,6 +1632,117 @@ func TestAdminUpdatePembayaran(t *testing.T) {
 
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("Success_UpdateMetodeAndBank_JSONPayload", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+
+		pembayaranID := uuid.New()
+		nomorInvoice := "INV-UPDATE-MTD"
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pembayaran" WHERE id = $1 ORDER BY "pembayaran"."id" LIMIT $2`)).
+			WithArgs(pembayaranID, 1).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "nomor_invoice", "jumlah", "status", "metode_pembayaran", "bank_tujuan"}).
+				AddRow(pembayaranID, nomorInvoice, 5000000.0, helpers.PaymentVerificationDiterima, "tunai", ""))
+
+		mock.ExpectBegin()
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE "pembayaran" SET`)).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+
+		mockSyncPendaftaranStatusQuick(mock, nomorInvoice)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("role", "admin")
+		c.Params = gin.Params{{Key: "id", Value: pembayaranID.String()}}
+		c.Request, _ = http.NewRequest(http.MethodPut, "/admin/pembayaran/"+pembayaranID.String()+"/admin",
+			bytes.NewBufferString(`{"jumlah":9000000,"tanggal_bayar":"2026-10-28","metode_pembayaran":"transfer","bank_tujuan":"BCA"}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		AdminUpdatePembayaran(c)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected HTTP 200, got %d: %s", w.Code, w.Body.String())
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, `"metode_pembayaran":"transfer"`) || !strings.Contains(body, `"bank_tujuan":"BCA"`) || !strings.Contains(body, `"metode_label":"Transfer Bank BCA"`) {
+			t.Errorf("Expected updated transfer BCA metadata, got: %s", body)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("BadRequest_ValidationErrorsOnUpdate", func(t *testing.T) {
+		cases := []struct {
+			name    string
+			form    url.Values
+			wantErr string
+		}{
+			{
+				name:    "Invalid jumlah zero",
+				form:    url.Values{"jumlah": {"0"}},
+				wantErr: "Jumlah pembayaran tidak valid",
+			},
+			{
+				name:    "Invalid tanggal_bayar",
+				form:    url.Values{"tanggal_bayar": {"bukan-tanggal"}},
+				wantErr: "Tanggal pembayaran tidak valid",
+			},
+			{
+				name:    "Invalid metode_pembayaran transfer without bank",
+				form:    url.Values{"metode_pembayaran": {"transfer"}, "bank_tujuan": {""}},
+				wantErr: "Bank tujuan wajib diisi untuk metode pembayaran transfer",
+			},
+			{
+				name:    "Invalid bank_tujuan without valid bank",
+				form:    url.Values{"bank_tujuan": {"BRI"}},
+				wantErr: "Bank tujuan tidak valid",
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				mock, cleanup := setupMockDB(t)
+				defer cleanup()
+
+				pembayaranID := uuid.New()
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pembayaran" WHERE id = $1 ORDER BY "pembayaran"."id" LIMIT $2`)).
+					WithArgs(pembayaranID, 1).
+					WillReturnRows(sqlmock.NewRows([]string{"id", "jumlah", "metode_pembayaran", "bank_tujuan"}).
+						AddRow(pembayaranID, 5000000.0, "transfer", "BSI"))
+
+				w := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(w)
+				c.Params = gin.Params{{Key: "id", Value: pembayaranID.String()}}
+				c.Request = createFormRequest(http.MethodPut, "/admin/pembayaran/"+pembayaranID.String()+"/admin", tc.form)
+
+				AdminUpdatePembayaran(c)
+
+				if w.Code != http.StatusBadRequest {
+					t.Fatalf("Expected HTTP 400, got %d: %s", w.Code, w.Body.String())
+				}
+				if !strings.Contains(w.Body.String(), tc.wantErr) {
+					t.Errorf("Expected error %q, got %s", tc.wantErr, w.Body.String())
+				}
+			})
+		}
+	})
+
+	t.Run("Forbidden_NonAdminRole", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Set("role", "customer")
+		c.Params = gin.Params{{Key: "id", Value: uuid.New().String()}}
+		c.Request = createFormRequest(http.MethodPut, "/admin/pembayaran/id/admin", url.Values{"jumlah": {"6000000"}})
+
+		AdminUpdatePembayaran(c)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("Expected HTTP 403, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 }

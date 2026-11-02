@@ -15,6 +15,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// sendEmail didelegasikan ke helpers.SendEmail secara default, dan dapat di-override pada pengujian.
+var sendEmail = helpers.SendEmail
+
+// SetSendEmailFunc memungkinkan pengujian meng-override fungsi pengiriman email
+// dan mengembalikan fungsi restore untuk mengembalikan implementasi asli.
+func SetSendEmailFunc(fn func(to, subject, body string) error) func() {
+	orig := sendEmail
+	sendEmail = fn
+	return func() {
+		sendEmail = orig
+	}
+}
+
 // GetAllPengaduan — GET /admin/pengaduan
 // Mengembalikan seluruh laporan pengaduan dengan informasi customer & pendaftaran.
 func GetAllPengaduan(c *gin.Context) {
@@ -278,7 +291,7 @@ func UpdateStatusPengaduan(c *gin.Context) {
 		}
 
 		if subject != "" {
-			if err := helpers.SendEmail(customer.Email, subject, emailBody); err != nil {
+			if err := sendEmail(customer.Email, subject, emailBody); err != nil {
 				// Email gagal: catat ke log, status database tetap tersimpan
 				fmt.Printf("[Email Notifikasi] Gagal kirim email ke %s untuk pengaduan %s: %v\n",
 					customer.Email, id, err)

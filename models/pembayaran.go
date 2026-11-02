@@ -8,13 +8,16 @@ import (
 )
 
 type Pembayaran struct {
-	ID              uuid.UUID `gorm:"type:uuid;primaryKey"`
-	NomorInvoice    string    `gorm:"column:nomor_invoice;not null"` // FK ke Invoice.nomor_invoice (Phase 6C)
-	Jumlah          float64
-	TanggalBayar    time.Time
-	BuktiPembayaran string
-	Status          string
-	AlasanPenolakan string `gorm:"type:text"` // diisi admin saat menolak; dikosongkan saat diterima / diganti
+	ID               uuid.UUID `gorm:"type:uuid;primaryKey"`
+	NomorInvoice     string    `gorm:"column:nomor_invoice;not null"` // FK ke Invoice.nomor_invoice (Phase 6C)
+	Jumlah           float64
+	TanggalBayar     time.Time
+	MetodePembayaran string `gorm:"column:metode_pembayaran;type:varchar(50);default:'transfer'"`
+	BankTujuan       string `gorm:"column:bank_tujuan;type:varchar(50)"`
+	SumberPembayaran string `gorm:"column:sumber_pembayaran;type:varchar(50);default:'customer'"`
+	BuktiPembayaran  string
+	Status           string
+	AlasanPenolakan  string `gorm:"type:text"` // diisi admin saat menolak; dikosongkan saat diterima / diganti
 
 	// Relasi
 	Invoice Invoice `gorm:"foreignKey:NomorInvoice;references:NomorInvoice" json:"-"`

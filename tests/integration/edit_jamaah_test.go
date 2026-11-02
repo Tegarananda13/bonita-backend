@@ -1,4 +1,4 @@
-package tests
+package integration_test
 
 import (
 	"bytes"
@@ -17,6 +17,7 @@ import (
 	"bonita-backend/helpers"
 	"bonita-backend/models"
 	"bonita-backend/routes"
+	"bonita-backend/tests/testhelper"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
@@ -330,7 +331,7 @@ func TestEditJamaahEndToEnd(t *testing.T) {
 		router, mock, cleanup := setupMockRouter(t)
 		defer cleanup()
 
-		adminToken := makeJWT(adminID.String(), "admin", "Admin Utama")
+		adminToken := testhelper.MakeJWT(adminID.String(), "admin", "Admin Utama")
 
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
 			WithArgs(nomor1, 1).
@@ -382,7 +383,7 @@ func TestEditJamaahEndToEnd(t *testing.T) {
 		}
 
 		// Role tidak memiliki izin (misal role "customer" atau "staff_gudang")
-		unauthorizedToken := makeJWT(uuid.New().String(), "customer", "User Tanpa Izin")
+		unauthorizedToken := testhelper.MakeJWT(uuid.New().String(), "customer", "User Tanpa Izin")
 		req2 := httptest.NewRequest(http.MethodPut, "/admin/pendaftaran/"+nomor1+"/jamaah", bytes.NewReader(body))
 		req2.Header.Set("Content-Type", "application/json")
 		req2.Header.Set("Authorization", "Bearer "+unauthorizedToken)
@@ -398,7 +399,7 @@ func TestEditJamaahEndToEnd(t *testing.T) {
 		router, mock, cleanup := setupMockRouter(t)
 		defer cleanup()
 
-		adminToken := makeJWT(adminID.String(), "admin", "Admin Utama")
+		adminToken := testhelper.MakeJWT(adminID.String(), "admin", "Admin Utama")
 
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
 			WithArgs("UMR-TIDAK-ADA", 1).
@@ -421,7 +422,7 @@ func TestEditJamaahEndToEnd(t *testing.T) {
 		router, mock, cleanup := setupMockRouter(t)
 		defer cleanup()
 
-		adminToken := makeJWT(adminID.String(), "admin", "Admin Utama")
+		adminToken := testhelper.MakeJWT(adminID.String(), "admin", "Admin Utama")
 
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
 			WithArgs(nomor1, 1).
@@ -465,7 +466,7 @@ func TestEditJamaahEndToEnd(t *testing.T) {
 		router, mock, cleanup := setupMockRouter(t)
 		defer cleanup()
 
-		adminToken := makeJWT(adminID.String(), "admin", "Admin Utama")
+		adminToken := testhelper.MakeJWT(adminID.String(), "admin", "Admin Utama")
 
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pendaftaran" WHERE nomor_pendaftaran = $1 ORDER BY "pendaftaran"."nomor_pendaftaran" LIMIT $2`)).
 			WithArgs(nomor1, 1).

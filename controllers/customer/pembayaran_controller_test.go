@@ -500,6 +500,122 @@ func TestCreatePembayaran(t *testing.T) {
 			t.Fatalf("Unfulfilled expectations: %v", err)
 		}
 	})
+
+	t.Run("Success_CustomerTransferBanks_BSI_Mandiri_BCA_AlwaysPendingAndCustomerSource", func(t *testing.T) {
+		banks := []struct {
+			inputBank string
+			wantBank  string
+			wantLabel string
+		}{
+			{"BSI", "BSI", "Transfer Bank BSI"},
+			{"Mandiri", "MANDIRI", "Transfer Bank Mandiri"},
+			{"BCA", "BCA", "Transfer Bank BCA"},
+		}
+
+		for _, b := range banks {
+			t.Run("Bank_"+b.wantBank, func(t *testing.T) {
+				mock, cleanup := setupMockDB(t)
+				defer cleanup()
+				mock.MatchExpectationsInOrder(false)
+
+				mockPendaftaranWithPaketAndInvoice(mock, nomorPendaftaran, nomorInvoice, nik, paketID, hargaPaket, totalTagihan, models.InvoiceStatusBelumBayar)
+
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT COALESCE(SUM(jumlah),0) FROM "pembayaran" WHERE nomor_invoice = $1 AND status = $2`)).
+					WithArgs(nomorInvoice, helpers.PaymentVerificationDiterima).
+					WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(0.0))
+
+				mock.ExpectBegin()
+				mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "pembayaran"`)).
+					WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit()
+
+				body := `{"jumlah": 6000000, "metode_pembayaran": "transfer", "bank_tujuan": "` + b.inputBank + `"}`
+				w := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(w)
+				c.Request, _ = http.NewRequest(http.MethodPost, "/customer/pembayaran", bytes.NewBufferString(body))
+				c.Request.Header.Set("Content-Type", "application/json")
+				c.Set("pendaftaran_id", nomorPendaftaran)
+
+				CreatePembayaran(c)
+
+				if w.Code != http.StatusCreated {
+					t.Fatalf("Expected HTTP 201 Created, got %d. Body: %s", w.Code, w.Body.String())
+				}
+
+				var resp map[string]interface{}
+				_ = json.Unmarshal(w.Body.Bytes(), &resp)
+				data := resp["data"].(map[string]interface{})
+
+				if data["status"] != helpers.PaymentVerificationPending {
+					t.Errorf("Expected status pending, got %v", data["status"])
+				}
+				if data["metode_pembayaran"] != helpers.MetodePembayaranTransfer {
+					t.Errorf("Expected metode_pembayaran transfer, got %v", data["metode_pembayaran"])
+				}
+				if data["bank_tujuan"] != b.wantBank {
+					t.Errorf("Expected bank_tujuan %s, got %v", b.wantBank, data["bank_tujuan"])
+				}
+				if data["sumber_pembayaran"] != helpers.SumberPembayaranCustomer {
+					t.Errorf("Expected sumber_pembayaran customer, got %v", data["sumber_pembayaran"])
+				}
+				if data["metode_label"] != b.wantLabel {
+					t.Errorf("Expected metode_label %s, got %v", b.wantLabel, data["metode_label"])
+				}
+
+				if err := mock.ExpectationsWereMet(); err != nil {
+					t.Fatalf("Unfulfilled expectations: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("BadRequest_SecurityAndMethodRestrictionsForCustomer", func(t *testing.T) {
+		cases := []struct {
+			name    string
+			payload string
+			wantErr string
+		}{
+			{
+				name:    "Customer cannot use metode_pembayaran tunai",
+				payload: `{"jumlah": 5000000, "metode_pembayaran": "tunai"}`,
+				wantErr: "Pembayaran melalui portal customer hanya mendukung metode transfer",
+			},
+			{
+				name:    "Customer cannot set sumber_pembayaran admin",
+				payload: `{"jumlah": 5000000, "metode_pembayaran": "transfer", "bank_tujuan": "BSI", "sumber_pembayaran": "admin"}`,
+				wantErr: "Customer tidak diizinkan menentukan sumber pembayaran admin",
+			},
+			{
+				name:    "Customer cannot set status diterima",
+				payload: `{"jumlah": 5000000, "metode_pembayaran": "transfer", "bank_tujuan": "BSI", "status": "diterima"}`,
+				wantErr: "Customer tidak diizinkan menetapkan status pembayaran",
+			},
+			{
+				name:    "Customer cannot use unsupported bank BRI",
+				payload: `{"jumlah": 5000000, "metode_pembayaran": "transfer", "bank_tujuan": "BRI"}`,
+				wantErr: "Bank tujuan tidak valid (hanya mendukung BSI, Mandiri, atau BCA)",
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				w := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(w)
+				c.Request, _ = http.NewRequest(http.MethodPost, "/customer/pembayaran", bytes.NewBufferString(tc.payload))
+				c.Request.Header.Set("Content-Type", "application/json")
+				c.Set("pendaftaran_id", nomorPendaftaran)
+
+				CreatePembayaran(c)
+
+				if w.Code != http.StatusBadRequest {
+					t.Fatalf("Expected HTTP 400 Bad Request, got %d: %s", w.Code, w.Body.String())
+				}
+				if !strings.Contains(w.Body.String(), tc.wantErr) {
+					t.Errorf("Expected error containing %q, got %s", tc.wantErr, w.Body.String())
+				}
+			})
+		}
+	})
 }
 
 // =========================================================================
@@ -750,6 +866,80 @@ func TestGetPembayaran(t *testing.T) {
 		item3 := riwayat[2].(map[string]interface{})
 		if item3["status"] != helpers.PaymentVerificationDitolak || item3["alasan_penolakan"] != "Foto struk buram" {
 			t.Errorf("Item 3 data mismatch: %v", item3)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("Unfulfilled expectations: %v", err)
+		}
+	})
+
+	t.Run("Success_RiwayatWithAllPaymentMethods_BSI_Mandiri_BCA_Tunai", func(t *testing.T) {
+		mock, cleanup := setupMockDB(t)
+		defer cleanup()
+
+		mock.MatchExpectationsInOrder(false)
+
+		mockPendaftaranWithPaketAndInvoice(mock, nomorPendaftaran, nomorInvoice, nik, paketID, hargaPaket, totalTagihan, models.InvoiceStatusLunas)
+
+		now := time.Now()
+		colsWithMeta := []string{
+			"id", "nomor_invoice", "jumlah", "tanggal_bayar", "bukti_pembayaran",
+			"status", "alasan_penolakan", "metode_pembayaran", "bank_tujuan", "sumber_pembayaran",
+		}
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "pembayaran" WHERE nomor_invoice = $1 ORDER BY tanggal_bayar ASC`)).
+			WithArgs(nomorInvoice).
+			WillReturnRows(sqlmock.NewRows(colsWithMeta).
+				AddRow(uuid.New(), nomorInvoice, 5000000.0, now.Add(-72*time.Hour), "bukti_bsi.jpg", helpers.PaymentVerificationDiterima, "", "transfer", "BSI", "customer").
+				AddRow(uuid.New(), nomorInvoice, 7500000.0, now.Add(-48*time.Hour), "", helpers.PaymentVerificationDiterima, "", "transfer", "MANDIRI", "admin").
+				AddRow(uuid.New(), nomorInvoice, 10000000.0, now.Add(-24*time.Hour), "", helpers.PaymentVerificationDiterima, "", "transfer", "BCA", "admin").
+				AddRow(uuid.New(), nomorInvoice, 5000000.0, now.Add(-12*time.Hour), "", helpers.PaymentVerificationDiterima, "", "tunai", "", "admin").
+				AddRow(uuid.New(), nomorInvoice, 3000000.0, now.Add(-6*time.Hour), "bukti_pending.jpg", helpers.PaymentVerificationPending, "", "transfer", "BSI", "customer").
+				AddRow(uuid.New(), nomorInvoice, 2000000.0, now.Add(-2*time.Hour), "bukti_tolak.jpg", helpers.PaymentVerificationDitolak, "Nominal tidak cocok", "transfer", "BCA", "customer"))
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request, _ = http.NewRequest(http.MethodGet, "/customer/pembayaran", nil)
+		c.Set("pendaftaran_id", nomorPendaftaran)
+
+		GetPembayaran(c)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected HTTP 200 OK, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var resp map[string]interface{}
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+
+		// Total yang diterima: 5jt (BSI) + 7.5jt (Mandiri) + 10jt (BCA) + 5jt (Tunai) = 27.500.000
+		// Pending (3jt) dan Ditolak (2jt) tidak dihitung
+		if resp["total_dibayar"] != 27500000.0 {
+			t.Errorf("Expected total_dibayar 27500000, got %v", resp["total_dibayar"])
+		}
+
+		riwayat := resp["riwayat"].([]interface{})
+		if len(riwayat) != 6 {
+			t.Fatalf("Expected 6 riwayat items, got %d", len(riwayat))
+		}
+
+		r0 := riwayat[0].(map[string]interface{})
+		if r0["metode_label"] != "Transfer Bank BSI" || r0["bank_tujuan"] != "BSI" || r0["sumber_pembayaran"] != "customer" {
+			t.Errorf("Expected Transfer Bank BSI (customer), got %v", r0)
+		}
+
+		r1 := riwayat[1].(map[string]interface{})
+		if r1["metode_label"] != "Transfer Bank Mandiri" || r1["bank_tujuan"] != "MANDIRI" || r1["sumber_pembayaran"] != "admin" {
+			t.Errorf("Expected Transfer Bank Mandiri (admin), got %v", r1)
+		}
+
+		r2 := riwayat[2].(map[string]interface{})
+		if r2["metode_label"] != "Transfer Bank BCA" || r2["bank_tujuan"] != "BCA" || r2["sumber_pembayaran"] != "admin" {
+			t.Errorf("Expected Transfer Bank BCA (admin), got %v", r2)
+		}
+
+		r3 := riwayat[3].(map[string]interface{})
+		if r3["metode_pembayaran"] != "tunai" || r3["bank_tujuan"] != "" || r3["metode_label"] != "Tunai (Pembayaran di Kantor)" || r3["sumber_pembayaran"] != "admin" {
+			t.Errorf("Expected Tunai (Pembayaran di Kantor) with empty bank_tujuan, got %v", r3)
 		}
 
 		if err := mock.ExpectationsWereMet(); err != nil {

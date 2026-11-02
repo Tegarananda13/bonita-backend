@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
@@ -183,13 +184,27 @@ func TestConnectDatabase_Integration(t *testing.T) {
 		t.Skip("Skipping DB integration test; set TEST_INTEGRATION_DB=true to run against live PostgreSQL")
 	}
 
+	if err := godotenv.Overload("../.env.test"); err != nil {
+		_ = godotenv.Overload(".env.test")
+	}
+	if os.Getenv("DB_NAME") != "bonita_umroh_test_db" {
+		t.Fatal("TEST_INTEGRATION_DB must use bonita_umroh_test_db")
+	}
+
 	prevDB := DB
 	defer func() { DB = prevDB }()
 
 	ConnectDatabase()
 
 	if DB == nil {
-		t.Errorf("Expected DB to not be nil after successful ConnectDatabase()")
+		t.Fatalf("Expected DB to not be nil after successful ConnectDatabase()")
+	}
+
+	var currentDB string
+	if err := DB.Raw("SELECT current_database()").Scan(&currentDB).Error; err != nil {
+		t.Fatalf("Gagal memeriksa database aktif: %v", err)
+	}
+	if currentDB != "bonita_umroh_test_db" {
+		t.Fatalf("Terkoneksi ke database %q, bukan bonita_umroh_test_db", currentDB)
 	}
 }
-

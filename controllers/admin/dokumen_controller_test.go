@@ -709,13 +709,13 @@ func TestAdminUploadDokumen(t *testing.T) {
 		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "dokumen"`)).
 			WithArgs(
-				sqlmock.AnyArg(), // id
-				nomorP,           // nomor_pendaftaran
-				"paspor",         // jenis_dokumen
-				sqlmock.AnyArg(), // file_path
+				sqlmock.AnyArg(),                    // id
+				nomorP,                              // nomor_pendaftaran
+				"paspor",                            // jenis_dokumen
+				sqlmock.AnyArg(),                    // file_path
 				helpers.PaymentVerificationDiterima, // status_validasi
-				"",               // alasan_penolakan
-				sqlmock.AnyArg(), // created_at
+				"",                                  // alasan_penolakan
+				sqlmock.AnyArg(),                    // created_at
 			).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectCommit()

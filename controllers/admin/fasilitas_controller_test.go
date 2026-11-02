@@ -33,11 +33,11 @@ func TestCreateFasilitas(t *testing.T) {
 		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO "detail_fasilitas"`)).
 			WithArgs(
-				sqlmock.AnyArg(), // id
-				paketID,          // paket_id
-				"Hotel Bintang 5", // nama_fasilitas
+				sqlmock.AnyArg(),       // id
+				paketID,                // paket_id
+				"Hotel Bintang 5",      // nama_fasilitas
 				"Dekat Masjidil Haram", // deskripsi
-				sqlmock.AnyArg(), // created_at
+				sqlmock.AnyArg(),       // created_at
 			).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectCommit()

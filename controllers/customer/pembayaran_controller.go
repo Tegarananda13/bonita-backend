@@ -15,11 +15,27 @@ import (
 // CreatePembayaran membuat tagihan/rencana pembayaran baru oleh customer.
 func CreatePembayaran(c *gin.Context) {
 	var req struct {
-		Jumlah float64 `json:"jumlah" binding:"required"`
+		Jumlah           float64 `json:"jumlah" binding:"required"`
+		MetodePembayaran string  `json:"metode_pembayaran"`
+		BankTujuan       string  `json:"bank_tujuan"`
+		SumberPembayaran string  `json:"sumber_pembayaran"`
+		Status           string  `json:"status"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Jumlah wajib diisi"})
+		return
+	}
+
+	normMetode, normBank, err := helpers.ValidateCustomerPaymentRequest(
+		req.Jumlah,
+		req.MetodePembayaran,
+		req.BankTujuan,
+		req.SumberPembayaran,
+		req.Status,
+	)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -63,10 +79,13 @@ func CreatePembayaran(c *gin.Context) {
 	}
 
 	pembayaran := models.Pembayaran{
-		NomorInvoice: invoice.NomorInvoice,
-		Jumlah:       req.Jumlah,
-		TanggalBayar: time.Now(),
-		Status:       helpers.PaymentVerificationPending,
+		NomorInvoice:     invoice.NomorInvoice,
+		Jumlah:           req.Jumlah,
+		TanggalBayar:     time.Now(),
+		MetodePembayaran: normMetode,
+		BankTujuan:       normBank,
+		SumberPembayaran: helpers.SumberPembayaranCustomer,
+		Status:           helpers.PaymentVerificationPending,
 	}
 
 	if err := config.DB.Create(&pembayaran).Error; err != nil {
@@ -77,10 +96,14 @@ func CreatePembayaran(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Pembayaran berhasil dibuat",
 		"data": gin.H{
-			"id":            pembayaran.ID,
-			"jumlah":        pembayaran.Jumlah,
-			"status":        pembayaran.Status,
-			"nomor_invoice": invoice.NomorInvoice,
+			"id":                pembayaran.ID,
+			"jumlah":            pembayaran.Jumlah,
+			"metode_pembayaran": pembayaran.MetodePembayaran,
+			"bank_tujuan":       pembayaran.BankTujuan,
+			"sumber_pembayaran": pembayaran.SumberPembayaran,
+			"metode_label":      helpers.FormatPaymentMethodLabel(pembayaran.MetodePembayaran, pembayaran.BankTujuan),
+			"status":            pembayaran.Status,
+			"nomor_invoice":     invoice.NomorInvoice,
 		},
 	})
 }
@@ -129,13 +152,22 @@ func GetPembayaran(c *gin.Context) {
 		if p.Status == helpers.PaymentVerificationDitolak {
 			alasan = p.AlasanPenolakan
 		}
+		normMetode, normBank, normSumber, metodeLabel := helpers.NormalizePembayaranMetadata(
+			p.MetodePembayaran,
+			p.BankTujuan,
+			p.SumberPembayaran,
+		)
 		result = append(result, gin.H{
-			"id":               p.ID,
-			"jumlah":           p.Jumlah,
-			"status":           p.Status,
-			"tanggal":          p.TanggalBayar,
-			"bukti":            p.BuktiPembayaran,
-			"alasan_penolakan": alasan,
+			"id":                p.ID,
+			"jumlah":            p.Jumlah,
+			"metode_pembayaran": normMetode,
+			"bank_tujuan":       normBank,
+			"sumber_pembayaran": normSumber,
+			"metode_label":      metodeLabel,
+			"status":            p.Status,
+			"tanggal":           p.TanggalBayar,
+			"bukti":             p.BuktiPembayaran,
+			"alasan_penolakan":  alasan,
 		})
 	}
 

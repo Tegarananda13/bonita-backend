@@ -379,4 +379,3 @@ func TestDPDeadlineHours_Constant(t *testing.T) {
 		t.Errorf("Expected DPDeadlineHours to be 24, got %d", DPDeadlineHours)
 	}
 }
-

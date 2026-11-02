@@ -403,4 +403,3 @@ func TestBuildBonitaContext(t *testing.T) {
 		}
 	})
 }
-

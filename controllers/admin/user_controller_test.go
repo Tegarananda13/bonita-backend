@@ -124,9 +124,9 @@ func TestAdminCreateCustomer(t *testing.T) {
 
 	t.Run("BadRequest_InvalidNIK_Length", func(t *testing.T) {
 		testCases := []string{
-			"12345",                    // too short
-			"123456789012345",          // 15 digits
-			"12345678901234567",        // 17 digits
+			"12345",             // too short
+			"123456789012345",   // 15 digits
+			"12345678901234567", // 17 digits
 		}
 
 		for _, nik := range testCases {

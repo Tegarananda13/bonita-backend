@@ -1,4 +1,6 @@
-package tests
+package integration_test
+
+import "bonita-backend/tests/testhelper"
 
 import (
 	"bytes"
@@ -16,11 +18,11 @@ import (
 )
 
 func TestPerlengkapanMasterInfo(t *testing.T) {
-	router, cleanup := setupTestApp(t)
+	router, cleanup := testhelper.SetupTestApp(t)
 	defer cleanup()
 
-	admin := createTestUser("admin", "Admin Perlengkapan")
-	token := makeJWT(admin.ID.String(), admin.Role, admin.Nama)
+	admin := testhelper.CreateTestUser("admin", "Admin Perlengkapan")
+	token := testhelper.MakeJWT(admin.ID.String(), admin.Role, admin.Nama)
 
 	req, _ := http.NewRequest(http.MethodGet, "/admin/perlengkapan/master", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -50,15 +52,15 @@ func TestPerlengkapanMasterInfo(t *testing.T) {
 }
 
 func TestAdminUpdatePerlengkapanSingleAndMultiJamaah(t *testing.T) {
-	router, cleanup := setupTestApp(t)
+	router, cleanup := testhelper.SetupTestApp(t)
 	defer cleanup()
 
-	admin := createTestUser("admin", "Admin Perlengkapan")
-	token := makeJWT(admin.ID.String(), admin.Role, admin.Nama)
+	admin := testhelper.CreateTestUser("admin", "Admin Perlengkapan")
+	token := testhelper.MakeJWT(admin.ID.String(), admin.Role, admin.Nama)
 
-	paket := createTestPaket()
-	cust1 := createTestCustomer("1111111111", "Jamaah Satu")
-	cust2 := createTestCustomer("2222222222", "Jamaah Dua")
+	paket := testhelper.CreateTestPaket()
+	cust1 := testhelper.CreateTestCustomer("1111111111", "Jamaah Satu")
+	cust2 := testhelper.CreateTestCustomer("2222222222", "Jamaah Dua")
 
 	invNo := "INV-TEST-PERL-" + uuid.New().String()[:8]
 	nomor1 := "UMR-TEST-PERL1-" + uuid.New().String()[:8]
@@ -227,13 +229,13 @@ func TestAdminUpdatePerlengkapanSingleAndMultiJamaah(t *testing.T) {
 }
 
 func TestGetDetailPendaftaranGrupCustomerFields(t *testing.T) {
-	router, cleanup := setupTestApp(t)
+	router, cleanup := testhelper.SetupTestApp(t)
 	defer cleanup()
 
-	admin := createTestUser("admin", "Admin Verifikator")
-	token := makeJWT(admin.ID.String(), admin.Role, admin.Nama)
+	admin := testhelper.CreateTestUser("admin", "Admin Verifikator")
+	token := testhelper.MakeJWT(admin.ID.String(), admin.Role, admin.Nama)
 
-	paket := createTestPaket()
+	paket := testhelper.CreateTestPaket()
 
 	cust1 := models.Customer{
 		NIK:           "1234567890123451",

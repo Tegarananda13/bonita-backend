@@ -1,4 +1,6 @@
-package tests
+package integration_test
+
+import "bonita-backend/tests/testhelper"
 
 import (
 	"bytes"
@@ -17,14 +19,14 @@ import (
 )
 
 func TestAdminBatalkanPendaftaranProses(t *testing.T) {
-	router, cleanup := setupTestApp(t)
+	router, cleanup := testhelper.SetupTestApp(t)
 	defer cleanup()
 
-	admin := createTestUser("admin", "Admin Pembatalan")
-	token := makeJWT(admin.ID.String(), admin.Role, admin.Nama)
+	admin := testhelper.CreateTestUser("admin", "Admin Pembatalan")
+	token := testhelper.MakeJWT(admin.ID.String(), admin.Role, admin.Nama)
 
-	paket := createTestPaket()
-	cust := createTestCustomer("3111111111", "Jamaah Pembatalan Proses")
+	paket := testhelper.CreateTestPaket()
+	cust := testhelper.CreateTestCustomer("3111111111", "Jamaah Pembatalan Proses")
 	invNo := "INV-BATAL-1-" + uuid.New().String()[:8]
 	nomor := "UMR-BATAL-1-" + uuid.New().String()[:8]
 
@@ -151,14 +153,14 @@ func TestAdminBatalkanPendaftaranProses(t *testing.T) {
 }
 
 func TestAdminBatalkanPendaftaranStatusTransitionsAndNoRefund(t *testing.T) {
-	router, cleanup := setupTestApp(t)
+	router, cleanup := testhelper.SetupTestApp(t)
 	defer cleanup()
 
-	admin := createTestUser("admin", "Admin Pembatalan")
-	token := makeJWT(admin.ID.String(), admin.Role, admin.Nama)
+	admin := testhelper.CreateTestUser("admin", "Admin Pembatalan")
+	token := testhelper.MakeJWT(admin.ID.String(), admin.Role, admin.Nama)
 
-	paket := createTestPaket()
-	cust := createTestCustomer("3222222222", "Jamaah Pembatalan Selesai")
+	paket := testhelper.CreateTestPaket()
+	cust := testhelper.CreateTestCustomer("3222222222", "Jamaah Pembatalan Selesai")
 	invNo := "INV-BATAL-2-" + uuid.New().String()[:8]
 	nomorSelesai := "UMR-BATAL-SEL-" + uuid.New().String()[:8]
 
@@ -269,15 +271,15 @@ func TestAdminBatalkanPendaftaranStatusTransitionsAndNoRefund(t *testing.T) {
 }
 
 func TestAdminBatalkanPendaftaranGrupIsolation(t *testing.T) {
-	router, cleanup := setupTestApp(t)
+	router, cleanup := testhelper.SetupTestApp(t)
 	defer cleanup()
 
-	admin := createTestUser("admin", "Admin Pembatalan")
-	token := makeJWT(admin.ID.String(), admin.Role, admin.Nama)
+	admin := testhelper.CreateTestUser("admin", "Admin Pembatalan")
+	token := testhelper.MakeJWT(admin.ID.String(), admin.Role, admin.Nama)
 
-	paket := createTestPaket()
-	cust1 := createTestCustomer("3333333331", "Jamaah Grup Tetap Berangkat")
-	cust2 := createTestCustomer("3333333332", "Jamaah Grup Batal")
+	paket := testhelper.CreateTestPaket()
+	cust1 := testhelper.CreateTestCustomer("3333333331", "Jamaah Grup Tetap Berangkat")
+	cust2 := testhelper.CreateTestCustomer("3333333332", "Jamaah Grup Batal")
 
 	invNo := "INV-BATAL-GRP-" + uuid.New().String()[:8]
 	nomor1 := "UMR-BATAL-G1-" + uuid.New().String()[:8]
@@ -324,7 +326,7 @@ func TestAdminBatalkanPendaftaranGrupIsolation(t *testing.T) {
 		BatasWaktuDP:     time.Now().Add(24 * time.Hour),
 	}
 	config.DB.Create(&p1)
-	createCompleteDocs(nomor1)
+	testhelper.CreateCompleteDocs(nomor1)
 
 	p2 := models.Pendaftaran{
 		NomorPendaftaran: nomor2,

@@ -22,6 +22,26 @@ var generateOTP = func() string {
 	return fmt.Sprintf("%06d", rand.Intn(1000000))
 }
 
+// SetSendEmailFunc memungkinkan pengujian meng-override fungsi pengiriman email
+// dan mengembalikan fungsi restore untuk mengembalikan implementasi asli.
+func SetSendEmailFunc(fn func(to, subject, body string) error) func() {
+	orig := sendEmail
+	sendEmail = fn
+	return func() {
+		sendEmail = orig
+	}
+}
+
+// SetGenerateOTPFunc memungkinkan pengujian meng-override generator OTP
+// dan mengembalikan fungsi restore untuk mengembalikan implementasi asli.
+func SetGenerateOTPFunc(fn func() string) func() {
+	orig := generateOTP
+	generateOTP = fn
+	return func() {
+		generateOTP = orig
+	}
+}
+
 func RequestOTP(c *gin.Context) {
 
 	var req struct {

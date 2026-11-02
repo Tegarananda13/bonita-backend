@@ -266,4 +266,22 @@ func Migrate() {
 		WHERE pu.id = sub.paket_id
 		  AND (pu.foto_paket IS NULL OR pu.foto_paket = '')
 	`)
+
+	// Step 15 (Metode Pembayaran & Sumber Pembayaran): Backfill kolom baru pada tabel pembayaran.
+	// Idempoten — memastikan data pembayaran lama tetap konsisten tanpa merusak transaksi yang ada.
+	DB.Exec(`
+		UPDATE pembayaran
+		SET metode_pembayaran = 'transfer'
+		WHERE metode_pembayaran IS NULL OR TRIM(metode_pembayaran) = ''
+	`)
+	DB.Exec(`
+		UPDATE pembayaran
+		SET bank_tujuan = ''
+		WHERE bank_tujuan IS NULL
+	`)
+	DB.Exec(`
+		UPDATE pembayaran
+		SET sumber_pembayaran = 'customer'
+		WHERE sumber_pembayaran IS NULL OR TRIM(sumber_pembayaran) = ''
+	`)
 }
